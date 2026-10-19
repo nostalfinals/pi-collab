@@ -1,0 +1,3 @@
+node_modules/
+/test-agent-dir/
+package-lock.json
