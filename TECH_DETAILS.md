@@ -34,7 +34,7 @@
 - 一个 Lead 只对应一个 Collaborator，不是 subagent，不支持多个。
 - Lead 和 Collaborator 之间只有两条通道：
   - Lead → Collaborator：`send` 工具。
-  - Collaborator → Lead：消息工具。
+  - Collaborator → Lead：每轮运行结束时的最终 assistant text，作为 report 返回。
 - 两者的运行状态绑定：整体任务只有在两个 agent 都停下时才算结束。
 
 ## 3. 会话与文件
@@ -75,7 +75,7 @@
   - `not_started` → `active`：开启。
   - `active` → `paused`：协作者空闲时关闭。
   - `paused` → `active`：再次开启。
-- 开启消息统一为："collab mode is currently on，读取 collab-protocol skill 了解工作流程。"
+- 开启消息统一为："collab mode is currently on，读取 collab skill 了解工作流程。"
   - 第一次开、重新开、压缩后恢复都用同一句，不需要区分 re-read。
 - 关闭消息说明：只能读、不能发，当前没有运行中的协作者。
 - `not_started` 不需要状态消息，常驻的短说明已经覆盖。
@@ -96,7 +96,7 @@
 
 ### 5.2 协议放 skill
 
-- 完整协作协议放在扩展自带的 skill：`skills/collab-protocol/SKILL.md`。
+- 完整协作协议放在扩展自带的 skill：`skills/collab/SKILL.md`。
 - 通过 `resources_discover` 返回 `{ skillPaths: [...] }` 暴露。
 - description 写明"用户明确开启 collab mode 时读取"。
 - skill 的描述常驻 system prompt，完整内容只在模型读取时进入上下文；压缩后还能再读。
@@ -105,8 +105,8 @@
 
 两种可选：
 
-- 发一条"已开启，读 collab-protocol skill"；
-- 或 `pi.sendUserMessage("/skill:collab-protocol", { expandPromptTemplates: true })` 直接展开内容。
+- 发一条"已开启，读 collab skill"；
+- 或 `pi.sendUserMessage("/skill:collab", { expandPromptTemplates: true })` 直接展开内容。
 
 前者省一次工具调用，但依赖模型听话；后者规则立刻到位，但内容会进对话，压缩后可能被丢掉（仍可靠 skill 再读）。
 
@@ -124,32 +124,37 @@
 
 ### 6.1 术语
 
-- **消息**：Collaborator 通过工具发给 Lead 的沟通内容。
-- **自由文本**：Collaborator 边做边说的 assistant text，不是通信通道。
+handoff 和 steer 是同一个 `send` 工具在不同运行状态下的行为名称，不是两个工具。
+
+- **handoff**：Lead 通过 `send` 给空闲的 Collaborator 发消息，开启一轮任务。
+- **steer**：Collaborator 正在运行时，Lead 再次调用 `send`，向当前运行补充指令。
+- **report**：一次 Collaborator agent loop 最后 settle 之前输出的那段 assistant text，返回给 Lead。
+- **中间文本**：Collaborator 运行过程中的其他 assistant text，不作为 report 自动投递；Lead 可以通过 `inspect` 查看。
 
 ### 6.2 Lead 工具
 
-- `send`：给 Collaborator 发消息，立即返回，不等待完成。
-  - 协作者空闲 → 开新一轮；正在跑 → steer（具体语义仍可调）。
+- `send`：Lead 给 Collaborator 发消息的唯一工具，立即返回，不等待完成。
+  - 协作者空闲 → handoff，开新一轮；正在跑 → steer 当前运行。
   - 每次调用在 Lead 会话里写一条锚点 custom entry，记录协作者会话里对应的 user message entry ID。
 - `wait`：阻塞等待，见第 7 节。
 - `inspect`：pull-only 读取协作者会话，按消息/ID/tail/过滤；长内容按行取。不能自动倒灌进 Lead 上下文。
 - 是否加 Lead 主动取消协作者的工具，待定。
 
-### 6.3 Collaborator 工具
+### 6.3 Collaborator 的 report
 
-- 一个消息工具（名字待定，不建议和 Lead 的 `send` 同名），是它给 Lead 发消息的唯一通道。
-- 消息不带 `kind` 字段；模型自己从内容判断是进度、问题还是完成。
-- 最终的 assistant text 不自动投递；只在 `wait settle` 结果和 "message 模式先 settle" 的错误结果里出现。
-- 自由文本不进 wait 结果；Lead 想看就用 `inspect`。
+- Collaborator 不提供向 Lead 发消息的工具，只通过最终 assistant text 返回 report。
+- 在 `agent_settled` 时确定本轮 report；不把中间的 `message_end` 当作任务完成。
+- report 不带 `kind` 字段；Lead 自己从内容判断结果或需要回答的问题。
+- 中间文本不进 wait 结果；Lead 想看就用 `inspect`。
 
 ### 6.4 投递路由
 
+Collaborator settle 后，将运行状态和 report 一起投递：
+
 ```
-waiting === "message" → 结束等待，把消息作为 wait 结果返回
-waiting === "settle"  → 把消息放进数组，继续等
-waiting === "none"    → pi.sendMessage(msg, { triggerTurn: true })
-                        streaming 时 steer，空闲时开新一轮
+waiting === true  → 结束等待，作为 wait 结果返回
+waiting === false → pi.sendMessage(reportMessage, { triggerTurn: true })
+                    streaming 时 steer，空闲时开新一轮
 ```
 
 ## 7. wait 与生命周期
@@ -174,37 +179,32 @@ pi.sendMessage(reminder, { deliverAs: "steer" })
 - 队列里有消息，边界会自动 continue。
 - 挂起只持续到 reminder 入队，几毫秒，不是长挂起。
 - 下一轮 Lead 调 `wait`，真正阻塞在工具里。
-- nudge 建议让 Lead 调 `wait settle`。
+- nudge 建议让 Lead 调 `wait`。
 
-### 7.3 wait 两种模式
+### 7.3 wait 结果
 
-- `settle`：等协作者彻底停下。
-  - 结果：`state`（completed / error / aborted / cancelled）+ 期间所有新消息 + 最终 assistant text。
-- `message`：等下一条消息。
-  - 结果：这条消息。
-  - 如果先 settle 了没消息 → `isError: true`，`kind: "settled_without_message"`，带 state 和最终 text。
-- 两种都支持超时；超时返回 `state` + 已攒的消息，Lead 继续活跃，可以再 inspect / send / wait。
-- 最终 assistant text 如果太长，按类似 bash 的 50k 上限截断，并给出 entry 范围。
+- `wait` 只等协作者彻底停下，不再区分 message / settle 模式。
+- 结果：`state`（completed / error / aborted / cancelled）+ 本轮 report；未产生最终文本时没有 report，不拿中间文本代替。
+- 支持超时；超时返回当前 `state`，不提前返回 report。Lead 继续活跃，可以再 inspect / send / wait。
+- report 如果太长，按类似 bash 的 50k 上限截断，并给出 entry 范围。
 
 ### 7.4 等待状态机
 
-- `waiting`：`none | message | settle`，一次只允许一个 wait；第二个直接报错。
+- `waiting`：是否正在等待，一次只允许一个 wait；第二个直接报错。
 - 存的是 resolve 回调，不是 promise 本身。
-- `settle` 模式另有一个消息数组。
-- 开始时先设状态，再检查协作者是否已经 idle；已 idle 就立即返回，避免错过 settle 事件。
-- 超时 / abort 必须同步清理状态、resolve、消息数组。
-- 超时结果要带上已攒消息，避免丢失。
+- 开始时先设状态，再检查协作者是否已经 idle；已 idle 就立即返回运行状态和最近一轮 report，避免错过 settle 事件。
+- 超时 / abort 必须同步清理等待状态和 resolve。
 
 ### 7.5 被 steer 打断
 
-- 用户在 wait 期间发消息 → 用 `interrupted` 结果结束等待，`isError: false`，带上 state 和已攒消息。
+- 用户在 wait 期间发消息 → 用 `interrupted` 结果结束等待，`isError: false`，带上当前 state。
 - 用户消息作为单独消息出现在同一请求里，不塞进 tool result。
 - 只对 `streamingBehavior === "steer"` 打断，`followUp` 不打断。
 - 实现方式：`input` 事件后等一个 tick，再检查 `ctx.hasPendingMessages()`；图片处理可能延迟入队，所以用短间隔重试。
 - 为什么不能直接在 `input` 里 resolve：`input` 比消息入队早，wait 返回后 loop 可能 poll 到空队列，steer 会迟一轮。
 - 已核实：agent loop 在工具批次结束之后、下一次请求之前 drain steering。只要 steer 已在队列里，tool result 和 steer 会进同一请求。
 - `hasPendingMessages()` 能看到用户 steer（`_queueSteer` 先 push 到 session 的 `_steeringMessages`，再 `agent.steer`，同步完成），但看不到扩展用 `sendMessage({ deliverAs: "steer" })` 塞的 custom message。
-- 协作者消息恰好在 wait 前被 steer 的窄竞态：用一个 boolean `pendingCollaboratorSteer`，投递时置 true，Lead 的 `message_start` 看到对应 customType 时清掉；wait 开始时如果为 true，直接返回 `interrupted`。
+- 协作者 report 恰好在 wait 前被投递为 steer 的窄竞态：用一个 boolean `pendingCollaboratorSteer`，投递时置 true，Lead 的 `message_start` 看到对应 customType 时清掉；wait 开始时如果为 true，直接返回 `interrupted`。
 
 ### 7.6 取消与导航
 
@@ -243,11 +243,52 @@ pi.sendMessage(reminder, { deliverAs: "steer" })
 
 ## 10. UI 与命令
 
-- `/collab` 的具体子命令还没定：开启（选模型）、关闭/暂停、状态、取消。
+### 10.1 通用模型与思考级别选择面板
+
+开启协作和修改配置复用同一个两步面板，先选模型，再选思考级别（effort / thinking level）。
+
+1. **模型选择页**：交互参考 pi 自带的 `/model` 界面，提供搜索框和模型列表；按 Enter 确认模型，进入思考级别选择页。
+2. **思考级别选择页**：选择该模型支持的思考级别，按 Enter 确认，完成整个选择流程。
+
+返回与取消：
+
+- 思考级别页按 Esc：返回模型选择页，不关闭整个面板，保留刚才选择的模型位置。
+- 模型选择页按 Esc：取消本次选择，不提交配置。
+- 只有完成两步选择才提交模型和思考级别；中途返回或取消不改变现有配置或协作状态。
+
+修改已有配置时：
+
+- 模型列表的初始光标定位到 Collaborator 当前使用的模型，而不是列表第一项。
+- 模型未变时，思考级别页的初始选中项为当前思考级别。
+
+### 10.2 未开启时的 `/collab`
+
+- 当前为 `not_started` 或 `paused` 时，输入 `/collab` 直接打开通用选择面板，不先显示总览。
+- 完成模型和思考级别选择后，保存 Collaborator 配置，将状态设为 `active`，并向 Lead 发送开启通知。
+- 取消选择则保持原状态。
+- 开启模式本身不创建 Collaborator 会话，仍等第一次 `send` 才按需创建。
+
+### 10.3 已开启时的 `/collab`
+
+当前为 `active` 时，输入 `/collab` 打开总览面板，展示当前模型和思考级别，暂时只提供两个选项：
+
+- **Disable**：关闭协作模式，进入 `paused`，保留会话历史与配置。Collaborator 正在运行时拒绝关闭，明确提示先等待或取消。
+- **Change model or effort**：打开通用选择面板，初始光标定位到当前模型；完成后更新配置，协作模式保持 `active`。取消则保留原配置并返回总览。
+
+总览面板按 Esc 关闭，不改变协作状态或配置。
+
+配置生效时机：
+
+- 沿用 pi 原生的 `setModel` / `setThinkingLevel` 行为，不另做延迟生效机制。
+- Collaborator 空闲时修改，下一轮 handoff 使用新配置。
+- Collaborator 正在运行时修改，从下一次模型请求开始使用新配置，不必等整个 agent loop 结束；已经发出的请求不受影响，也不重启当前运行。
+- 当前安装的 pi 1.3.0 会直接更新 agent state，并在每次模型请求前通过 `prepareRequest` 读取最新模型和思考级别。
+
+### 10.4 其他界面
+
 - 协作者状态显示（footer / widget / 只在 wait 的 tool 里）还没定。
-- 用户默认看不到协作者的实时输出，只能看消息和 inspect。
+- 用户默认看不到协作者的实时输出，只能看 report 和 inspect。
 - 成本显示：footer 只算 Lead；协作者的 token/成本怎么展示还没定。
-- 关闭被拒绝时的提示要清楚说明"协作者还在运行"。
 
 ## 11. pi 内部机制
 
@@ -260,7 +301,7 @@ createAgentSession({
   model,
   thinkingLevel,
   tools: [...],          // read / bash / edit / write 等
-  customTools: [messageTool],
+  // 不注入向 Lead 发消息的自定义工具
   resourceLoader,        // noExtensions + appendSystemPromptOverride
   sessionManager,        // SessionManager.create(cwd, collabDir)
   settingsManager,
@@ -321,16 +362,17 @@ agent_end（TUI 清掉转圈）
 
 ## 12. 待定问题
 
-- Collaborator 的工具集、是否加载项目 extensions/MCP/skills/AGENTS.md、权限/审批、cwd、模型和 thinking level。
-- `send` 在协作者运行中是 steer 还是排队；消息顺序和关联方式。
+- Collaborator 的工具集、是否加载项目 extensions/MCP/skills/AGENTS.md、权限/审批、cwd。
+- 模型与思考级别的初始默认值；更换模型后思考级别的默认选项。
+- `send` 的消息顺序和关联方式（空闲时 handoff，运行中 steer 已确认）。
 - `inspect` 的粒度、分页、过滤。
-- `wait` 的默认超时、最终 text 截断策略、并发 wait 策略。
+- `wait` 的默认超时、report 截断策略。
 - nudge 次数上限和最后兜底行为。
 - 协作者出错、认证失败、session 创建失败、文件缺失/损坏时 Lead 看到什么。
 - `/reload`、切换 session 的收尾细节。
 - 分支同步里"未完成 turn"的精确定义。
 - 协作者自己的压缩：Lead 发过去的任务上下文被压掉后怎么办。
-- `/collab` 子命令、状态显示、成本显示、用户如何查看协作者输出。
+- 状态显示、成本显示、用户如何查看协作者输出。
 - 协议文本：skill 里写什么、工具 description 里写什么、短 section 里写什么。
 - 怎么验证成本真的降了、质量没掉。
 
@@ -340,15 +382,15 @@ agent_end（TUI 清掉转圈）
 
 ### 第一层：协作闭环
 
-- 创建协作者 session，自定义 prompt，工具：read / bash / edit / write + 消息工具。
-- Lead 工具：`send`、`wait settle`、简单 `inspect`。
+- 创建协作者 session，自定义 prompt，工具：read / bash / edit / write；最终 assistant text 作为 report。
+- Lead 工具：`send`（handoff / steer）、`wait`、简单 `inspect`。
 - 状态只用 `not_started` / `active`，custom entry + 开启消息。
 - 常驻短 section + collab skill。
 - 不做 pause、分支同步、fork 复制、压缩补状态、nudge。
 
 ### 第二层：生命周期
 
-- `wait message`、超时、steer 打断。
+- wait 超时、steer 打断。
 - nudge 兜底。
 - pause 三态、关闭拒绝。
 - 取消、错误处理。
@@ -365,6 +407,6 @@ agent_end（TUI 清掉转圈）
 - 状态从当前分支推导，不靠 summary。
 - `active` / `paused` 时，模型上下文里必须有一条当前状态消息。
 - 一次只允许一个 wait。
-- 协作者的消息工具是唯一通信通道。
+- Lead 通过 `send` 发起 handoff 或 steer；协作者没有向 Lead 发消息的工具，只以每轮最终 assistant text 返回 report。
 - 取消保持 `active`；暂停要求协作者空闲。
 - 两个 agent 都结束，整体任务才算结束（由 wait 和 nudge 保证）。
