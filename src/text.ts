@@ -1,0 +1,21 @@
+export const text = {
+  ui: {
+    collabCommandDescription: "Enable/disable or change the model for collab model",
+    terminalRequired: "/collab requires the terminal interface.",
+    configurationSaved: "Collaborator configuration saved. Task execution is not implemented yet.",
+    modeDisabled: "Collaborator mode disabled.",
+    configurationUpdated: "Collaborator configuration updated.",
+    noModelsAvailable: "No models available. Configure a provider with /login first.",
+    modelSelectorTitle: "Which model do you want to use for the collaborator?",
+    overviewTitle: (model: string, effort: string) => `Collaborator · ${model} · ${effort}`,
+    effortSelectorTitle: (model: string) => `Collaborator effort · ${model}`,
+    disableOption: "Disable",
+    changeConfigurationOption: "Change model or effort",
+    navigationKeyLabel: "↑↓",
+    navigationActionLabel: "navigate",
+    selectKeyLabel: "enter",
+    selectActionLabel: "select",
+    backKeyLabel: "esc",
+    backActionLabel: "back",
+  },
+};

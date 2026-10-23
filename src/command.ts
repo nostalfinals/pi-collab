@@ -7,14 +7,16 @@ import {
 } from "@earendil-works/pi-ai";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { CollabConfig, CollabMode } from "./collab-mode.ts";
-import { SearchSelector } from "./selector.ts";
+import { text } from "./text.ts";
+import { ModelSelector } from "./tui/model-selector.ts";
+import { SelectionPanel } from "./tui/selection-panel.ts";
 
 export async function collabCommand(
   collab: CollabMode,
   ctx: ExtensionCommandContext,
 ): Promise<void> {
   if (ctx.mode !== "tui") {
-    ctx.ui.notify("/collab requires the terminal interface.", "warning");
+    ctx.ui.notify(text.ui.terminalRequired, "warning");
     return;
   }
 
@@ -24,10 +26,7 @@ export async function collabCommand(
     const config = await selectConfig(ctx, state?.config);
     if (config) {
       collab.enable(config);
-      ctx.ui.notify(
-        "Collaborator configuration saved. Task execution is not implemented yet.",
-        "info",
-      );
+      ctx.ui.notify(text.ui.configurationSaved, "info");
     }
     return;
   }
@@ -35,11 +34,14 @@ export async function collabCommand(
   while (true) {
     const action = await ctx.ui.custom<string | undefined>(
       (tui, theme, kb, done) =>
-        new SearchSelector(
-          `Collaborator · ${state.config.provider}/${state.config.modelId} · ${state.config.thinkingLevel}`,
+        new SelectionPanel(
+          text.ui.overviewTitle(
+            `${state.config.provider}/${state.config.modelId}`,
+            state.config.thinkingLevel,
+          ),
           [
-            { value: "disable", label: "Disable" },
-            { value: "change", label: "Change model or effort" },
+            { value: "disable", label: text.ui.disableOption },
+            { value: "change", label: text.ui.changeConfigurationOption },
           ],
           undefined,
           theme,
@@ -47,13 +49,12 @@ export async function collabCommand(
           done,
           () => done(undefined),
           () => tui.requestRender(),
-          false,
         ),
     );
 
     if (action === "disable") {
       collab.disable(ctx);
-      ctx.ui.notify("Collaborator mode disabled.", "info");
+      ctx.ui.notify(text.ui.modeDisabled, "info");
       return;
     }
 
@@ -65,7 +66,7 @@ export async function collabCommand(
 
     if (config) {
       collab.updateConfig(ctx, config);
-      ctx.ui.notify("Collaborator configuration updated.", "info");
+      ctx.ui.notify(text.ui.configurationUpdated, "info");
       return;
     }
   }
@@ -85,7 +86,7 @@ async function selectConfig(
     .sort((a, b) => getModelSlug(a).localeCompare(getModelSlug(b)));
 
   if (models.length === 0) {
-    ctx.ui.notify("No models available. Configure a provider with /login first.", "warning");
+    ctx.ui.notify(text.ui.noModelsAvailable, "warning");
     return undefined;
   }
 
@@ -95,13 +96,8 @@ async function selectConfig(
 
   while (true) {
     const key = await ctx.ui.custom<string | undefined>((tui, theme, kb, done) => {
-      return new SearchSelector(
-        "Collaborator model",
-        models.map((model) => ({
-          value: getModelSlug(model),
-          label: model.id,
-          suffix: `[${model.provider}]`,
-        })),
+      return new ModelSelector(
+        models,
         selected,
         theme,
         kb,
@@ -124,8 +120,8 @@ async function selectConfig(
     );
     const thinkingLevel = await ctx.ui.custom<ModelThinkingLevel | undefined>(
       (tui, theme, kb, done) => {
-        return new SearchSelector(
-          `Collaborator effort · ${key}`,
+        return new SelectionPanel(
+          text.ui.effortSelectorTitle(key),
           getSupportedThinkingLevels(model).map((value) => ({ value, label: value })),
           level,
           theme,
