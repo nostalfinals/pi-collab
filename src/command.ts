@@ -121,7 +121,7 @@ async function selectConfig(
     const thinkingLevel = await ctx.ui.custom<ModelThinkingLevel | undefined>(
       (tui, theme, kb, done) => {
         return new SelectionPanel(
-          text.ui.effortSelectorTitle(key),
+          text.ui.thinkingLevelSelectorTitle(key),
           getSupportedThinkingLevels(model).map((value) => ({ value, label: value })),
           level,
           theme,

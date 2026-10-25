@@ -8,7 +8,7 @@ export const text = {
     noModelsAvailable: "No models available. Configure a provider with /login first.",
     modelSelectorTitle: "Which model do you want to use for the collaborator?",
     overviewTitle: (model: string, effort: string) => `Collaborator · ${model} · ${effort}`,
-    effortSelectorTitle: (model: string) => `Collaborator effort · ${model}`,
+    thinkingLevelSelectorTitle: (model: string) => `Choose the thinking level of ${model}`,
     disableOption: "Disable",
     changeConfigurationOption: "Change model or effort",
     navigationKeyLabel: "↑↓",
