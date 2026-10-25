@@ -59,11 +59,16 @@ export class SelectionPanel extends Container {
       noMatch: (text) => this.theme.fg("warning", text),
     });
     const index = items.findIndex((item) => item.value === selected);
-    if (index >= 0) list.setSelectedIndex(index);
+
+    if (index >= 0) {
+      list.setSelectedIndex(index);
+    }
+
     list.onSelect = (item) => this.onSelect(item.value);
     list.onCancel = this.onCancel;
     this.listContainer.clear();
     this.listContainer.addChild(list);
+
     // SelectList already displays the position when its items need scrolling.
     if (this.showPosition && items.length <= maxVisible) {
       const position = new Text("", 0, 0);
@@ -75,6 +80,7 @@ export class SelectionPanel extends Container {
       updatePosition();
       this.listContainer.addChild(position);
     }
+
     this.list = list;
   }
 
