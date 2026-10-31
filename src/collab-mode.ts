@@ -99,6 +99,10 @@ export class CollabMode {
     if (!this.collaboratorSession) {
       throw new Error(text.model.noCollaborator);
     }
+    const session = await this.collaboratorSession;
+    if (session.isIdle) {
+      throw new Error(text.model.collaboratorNotRunning);
+    }
     if (this.reportDelivery) {
       throw new Error(text.model.waitAlreadyPending);
     }

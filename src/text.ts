@@ -29,6 +29,7 @@ export const text = {
     waitResult: (report: string) => report,
     collabInactive: "",
     noCollaborator: "",
+    collaboratorNotRunning: "",
     waitAlreadyPending: "",
   },
 };
