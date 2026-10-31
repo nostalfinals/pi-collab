@@ -2,7 +2,7 @@ export const text = {
   ui: {
     collabCommandDescription: "Enable/disable or change the model for collab model",
     terminalRequired: "/collab requires the terminal interface.",
-    configurationSaved: "Collaborator configuration saved. Task execution is not implemented yet.",
+    configurationSaved: "Collaborator configuration saved.",
     modeDisabled: "Collaborator mode disabled.",
     configurationUpdated: "Collaborator configuration updated.",
     noModelsAvailable: "No models available. Configure a provider with /login first.",
@@ -17,5 +17,18 @@ export const text = {
     selectActionLabel: "select",
     backKeyLabel: "esc",
     backActionLabel: "back",
+    collabSendToolLabel: "Collab send",
+    collabWaitToolLabel: "Collab wait",
+  },
+  model: {
+    collaboratorSystemPrompt: "",
+    sendDescription: "",
+    waitDescription: "",
+    sendResult: "",
+    waitTimeoutResult: "",
+    waitResult: (report: string) => report,
+    collabInactive: "",
+    noCollaborator: "",
+    waitAlreadyPending: "",
   },
 };
