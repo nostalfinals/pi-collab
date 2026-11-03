@@ -6,15 +6,15 @@ import { text } from "./text.ts";
 export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void {
   pi.registerTool({
     name: "collab_send",
-    label: "SEND TOOL LABLE",
-    description: "Send a message or steer the collaborator.",
+    label: text.ui.collabSendToolLabel,
+    description: text.model.sendDescription,
     parameters: Type.Object({
       message: Type.String(),
     }),
     execute: async (_toolCallId, params) => {
       await collab.sendToCollaborator(params.message);
       return {
-        content: [{ type: "text", text: "Message sent" }],
+        content: [{ type: "text", text: text.model.sendResult }],
         details: {},
       };
     },
@@ -22,29 +22,32 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
 
   pi.registerTool({
     name: "collab_wait",
-    label: "WAIT TOOL LABLE",
-    description:
-      "Wait the collaborator to be settled, you will receive the collaborator's final message as tool result.",
+    label: text.ui.collabWaitToolLabel,
+    description: text.model.waitDescription,
     parameters: Type.Object({
       timeout: Type.Number({ minimum: 0 }),
     }),
     execute: async (_toolCallId, params) => {
-      const report = await collab.waitForCollaborator(params.timeout);
-      if (report === undefined) {
-        return {
-          content: [{ type: "text", text: `Collaborator didn't finish in ${params.timeout}` }],
-          details: {},
-          isError: true,
-        };
+      const result = await collab.waitForCollaborator(params.timeout);
+      switch (result.type) {
+        case "timeout":
+          return {
+            content: [{ type: "text", text: text.model.waitTimeoutResult(params.timeout) }],
+            details: {},
+            isError: true,
+          };
+        case "interrupted":
+          return {
+            content: [{ type: "text", text: text.model.waitInterruptedResult }],
+            details: {},
+            isError: false,
+          };
+        case "report":
+          return {
+            content: [{ type: "text", text: text.model.waitResult(result.report) }],
+            details: {},
+          };
       }
-      return {
-        content: [{ type: "text", text: wrapCollaboratorReport(report) }],
-        details: {},
-      };
     },
   });
-}
-
-function wrapCollaboratorReport(report: string): string {
-  return `<report_from_collaborator>${report}</report_from_collaborator>`;
 }

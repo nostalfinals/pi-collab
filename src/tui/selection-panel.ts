@@ -1,12 +1,5 @@
 import { DynamicBorder, type Theme } from "@earendil-works/pi-coding-agent";
-import {
-  Container,
-  SelectList,
-  Spacer,
-  Text,
-  type KeybindingsManager,
-  type SelectItem,
-} from "@earendil-works/pi-tui";
+import { Container, SelectList, Spacer, Text, type KeybindingsManager, type SelectItem } from "@earendil-works/pi-tui";
 
 import { text } from "../text.ts";
 

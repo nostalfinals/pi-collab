@@ -22,6 +22,8 @@ interface CollabState {
   config: CollabConfig;
 }
 
+export type CollabWaitResult = { type: "report"; report: string } | { type: "interrupted" } | { type: "timeout" };
+
 interface Delivery<T> {
   promise: Promise<T>;
   deliver: (value: T) => void;
@@ -42,7 +44,7 @@ const collabToolNames = ["collab_send", "collab_wait"];
 export class CollabMode {
   private collaboratorSession: Promise<AgentSession> | undefined;
   private collaboratorReport: string | undefined;
-  private reportDelivery: Delivery<string> | undefined;
+  private reportDelivery: Delivery<CollabWaitResult> | undefined;
   private leadContext: ExtensionContext | undefined;
   private cachedState: CollabState | undefined;
 
@@ -69,6 +71,7 @@ export class CollabMode {
     }
 
     const branch = this.context.sessionManager.getBranch();
+
     for (let i = branch.length - 1; i >= 0; i--) {
       const entry = branch[i];
       if (entry.type === "custom" && entry.customType === stateType) {
@@ -76,6 +79,7 @@ export class CollabMode {
         return this.cachedState;
       }
     }
+
     return undefined;
   }
 
@@ -121,7 +125,7 @@ export class CollabMode {
     });
   }
 
-  async waitForCollaborator(timeout: number): Promise<string | undefined> {
+  async waitForCollaborator(timeout: number): Promise<CollabWaitResult> {
     if (!this.collaboratorSession) {
       throw new Error(text.model.noCollaborator);
     }
@@ -136,15 +140,15 @@ export class CollabMode {
       throw new Error(text.model.waitAlreadyPending);
     }
 
-    const delivery = createPendingDelivery<string>();
+    const delivery = createPendingDelivery<CollabWaitResult>();
     this.reportDelivery = delivery;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     try {
       return await Promise.race([
         delivery.promise,
-        new Promise<undefined>((resolve) => {
-          timer = setTimeout(() => resolve(undefined), timeout * 1000);
+        new Promise<CollabWaitResult>((resolve) => {
+          timer = setTimeout(() => resolve({ type: "timeout" }), timeout * 1000);
         }),
       ]);
     } finally {
@@ -152,6 +156,32 @@ export class CollabMode {
         this.reportDelivery = undefined;
       }
       clearTimeout(timer);
+    }
+  }
+
+  // Input fires before steering is queued. Wait for the queue so the interrupted
+  // tool result and the user's message reach the next model request together.
+  async interruptWaitAfterInput(): Promise<void> {
+    const delivery = this.reportDelivery;
+
+    if (!delivery) {
+      return;
+    }
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, attempt === 0 ? 0 : 10);
+      });
+
+      if (this.reportDelivery !== delivery) {
+        return;
+      }
+
+      if (this.context.hasPendingMessages()) {
+        this.reportDelivery = undefined;
+        delivery.deliver({ type: "interrupted" });
+        return;
+      }
     }
   }
 
@@ -194,9 +224,7 @@ export class CollabMode {
       agentDir,
       extensionsOverride: (base) => ({
         ...base,
-        extensions: base.extensions.filter(
-          (extension) => extension.resolvedPath !== this.extensionPath,
-        ),
+        extensions: base.extensions.filter((extension) => extension.resolvedPath !== this.extensionPath),
       }),
       appendSystemPromptOverride: (base) =>
         text.model.collaboratorSystemPrompt ? [...base, text.model.collaboratorSystemPrompt] : base,
@@ -235,6 +263,7 @@ export class CollabMode {
         }
       }
     });
+
     return session;
   }
 
@@ -243,7 +272,7 @@ export class CollabMode {
 
     if (delivery) {
       this.reportDelivery = undefined;
-      delivery.deliver(report);
+      delivery.deliver({ type: "report", report });
       return;
     }
 
@@ -255,7 +284,7 @@ export class CollabMode {
 
     const message = {
       customType: reportMessageType,
-      content: this.wrapReport(report),
+      content: text.model.waitResult(report),
       display: true,
     };
 
@@ -264,9 +293,5 @@ export class CollabMode {
     } else {
       this.pi.sendMessage(message, { triggerTurn: true, deliverAs: "steer" });
     }
-  }
-
-  private wrapReport(message: string): string {
-    return `<report_from_collaborator>${message}</report_from_collaborator>`;
   }
 }
