@@ -37,59 +37,85 @@ function createPendingDelivery<T>(): Delivery<T> {
 
 const stateType = "collab-mode-state";
 const reportMessageType = "collab-report";
+const collabToolNames = ["collab_send", "collab_wait"];
 
 export class CollabMode {
   private collaboratorSession: Promise<AgentSession> | undefined;
   private collaboratorReport: string | undefined;
   private reportDelivery: Delivery<string> | undefined;
   private leadContext: ExtensionContext | undefined;
+  private cachedState: CollabState | undefined;
 
-  constructor(private pi: ExtensionAPI) {}
+  constructor(
+    private pi: ExtensionAPI,
+    private extensionPath: string,
+  ) {}
 
   set extensionContext(ctx: ExtensionContext) {
     this.leadContext = ctx;
+    this.cachedState = undefined;
   }
 
-  getState(ctx: ExtensionContext): CollabState | undefined {
-    const branch = ctx.sessionManager.getBranch();
+  private get context(): ExtensionContext {
+    if (!this.leadContext) {
+      throw new Error("Lead context is not available.");
+    }
+    return this.leadContext;
+  }
+
+  get state(): CollabState | undefined {
+    if (this.cachedState) {
+      return this.cachedState;
+    }
+
+    const branch = this.context.sessionManager.getBranch();
     for (let i = branch.length - 1; i >= 0; i--) {
       const entry = branch[i];
       if (entry.type === "custom" && entry.customType === stateType) {
-        return entry.data as CollabState;
+        this.cachedState = entry.data as CollabState;
+        return this.cachedState;
       }
     }
     return undefined;
   }
 
   enable(config: CollabConfig): void {
-    this.pi.appendEntry<CollabState>(stateType, { mode: "active", config });
+    const state: CollabState = { mode: "active", config };
+    this.pi.appendEntry<CollabState>(stateType, state);
+    this.cachedState = state;
   }
 
-  disable(ctx: ExtensionContext): void {
-    const state = this.getState(ctx);
-    if (state?.mode === "active") {
-      this.pi.appendEntry<CollabState>(stateType, { ...state, mode: "paused" });
+  disable(): void {
+    const current = this.state;
+    if (current?.mode === "active") {
+      const state: CollabState = { ...current, mode: "paused" };
+      this.pi.appendEntry<CollabState>(stateType, state);
+      this.cachedState = state;
     }
   }
 
-  updateConfig(ctx: ExtensionContext, config: CollabConfig): void {
-    const state = this.getState(ctx);
-    this.pi.appendEntry<CollabState>(stateType, {
-      mode: state?.mode ?? "paused",
+  updateConfig(config: CollabConfig): void {
+    const state: CollabState = {
+      mode: this.state?.mode ?? "paused",
       config,
-    });
+    };
+    this.pi.appendEntry<CollabState>(stateType, state);
+    this.cachedState = state;
   }
 
-  async sendToCollaborator(ctx: ExtensionContext, message: string): Promise<void> {
-    const state = this.getState(ctx);
+  async sendToCollaborator(message: string): Promise<void> {
+    const state = this.state;
+
     if (state?.mode !== "active") {
       throw new Error(text.model.collabInactive);
     }
 
-    const session = await this.getOrCreateCollaborator(ctx, state.config);
+    const session = await this.getOrCreateCollaborator(state.config);
+
     if (!session.isStreaming) {
       this.collaboratorReport = undefined;
     }
+
     void session.prompt(message, { streamingBehavior: "steer" }).catch((error: unknown) => {
       this.deliverReport(error instanceof Error ? error.message : String(error));
     });
@@ -99,10 +125,13 @@ export class CollabMode {
     if (!this.collaboratorSession) {
       throw new Error(text.model.noCollaborator);
     }
+
     const session = await this.collaboratorSession;
+
     if (session.isIdle) {
       throw new Error(text.model.collaboratorNotRunning);
     }
+
     if (this.reportDelivery) {
       throw new Error(text.model.waitAlreadyPending);
     }
@@ -132,17 +161,15 @@ export class CollabMode {
     this.collaboratorReport = undefined;
     this.reportDelivery = undefined;
     this.leadContext = undefined;
+    this.cachedState = undefined;
     if (session) {
       (await session).dispose();
     }
   }
 
-  private getOrCreateCollaborator(
-    ctx: ExtensionContext,
-    config: CollabConfig,
-  ): Promise<AgentSession> {
+  private getOrCreateCollaborator(config: CollabConfig): Promise<AgentSession> {
     if (!this.collaboratorSession) {
-      const creation = this.createCollaborator(ctx, config);
+      const creation = this.createCollaborator(config);
       this.collaboratorSession = creation;
       creation.catch(() => {
         if (this.collaboratorSession === creation) {
@@ -153,10 +180,8 @@ export class CollabMode {
     return this.collaboratorSession;
   }
 
-  private async createCollaborator(
-    ctx: ExtensionContext,
-    config: CollabConfig,
-  ): Promise<AgentSession> {
+  private async createCollaborator(config: CollabConfig): Promise<AgentSession> {
+    const ctx = this.context;
     const model = ctx.modelRegistry.find(config.provider, config.modelId);
 
     if (!model) {
@@ -167,7 +192,12 @@ export class CollabMode {
     const resourceLoader = new DefaultResourceLoader({
       cwd: ctx.cwd,
       agentDir,
-      noExtensions: true,
+      extensionsOverride: (base) => ({
+        ...base,
+        extensions: base.extensions.filter(
+          (extension) => extension.resolvedPath !== this.extensionPath,
+        ),
+      }),
       appendSystemPromptOverride: (base) =>
         text.model.collaboratorSystemPrompt ? [...base, text.model.collaboratorSystemPrompt] : base,
     });
@@ -183,7 +213,7 @@ export class CollabMode {
       agentDir,
       model,
       thinkingLevel: config.thinkingLevel,
-      tools: ["read", "bash", "edit", "write"],
+      tools: this.pi.getActiveTools().filter((name) => !collabToolNames.includes(name)),
       resourceLoader,
       sessionManager,
     });

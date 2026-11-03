@@ -11,8 +11,8 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
     parameters: Type.Object({
       message: Type.String(),
     }),
-    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-      await collab.sendToCollaborator(ctx, params.message);
+    execute: async (_toolCallId, params) => {
+      await collab.sendToCollaborator(params.message);
       return {
         content: [{ type: "text", text: "Message sent" }],
         details: {},
@@ -23,7 +23,8 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
   pi.registerTool({
     name: "collab_wait",
     label: "WAIT TOOL LABLE",
-    description: "Wait the collaborator to be settled, you will receive the collaborator's final message as tool result.",
+    description:
+      "Wait the collaborator to be settled, you will receive the collaborator's final message as tool result.",
     parameters: Type.Object({
       timeout: Type.Number({ minimum: 0 }),
     }),
@@ -45,5 +46,5 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
 }
 
 function wrapCollaboratorReport(report: string): string {
-  return `<report_from_collaborator>${report}</report_from_collaborator>`
+  return `<report_from_collaborator>${report}</report_from_collaborator>`;
 }

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { collabCommand } from "./command.ts";
 import { CollabMode } from "./collab-mode.ts";
@@ -5,7 +6,7 @@ import { text } from "./text.ts";
 import { registerCollabTools } from "./tools.ts";
 
 export default function (pi: ExtensionAPI) {
-  const collab = new CollabMode(pi);
+  const collab = new CollabMode(pi, fileURLToPath(import.meta.url));
   registerCollabTools(pi, collab);
 
   pi.on("session_start", (_event, ctx) => {

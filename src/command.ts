@@ -20,7 +20,7 @@ export async function collabCommand(
     return;
   }
 
-  const state = collab.getState(ctx);
+  const state = collab.state;
 
   if (state?.mode !== "active") {
     const config = await selectConfig(ctx, state?.config);
@@ -53,7 +53,7 @@ export async function collabCommand(
     );
 
     if (action === "disable") {
-      collab.disable(ctx);
+      collab.disable();
       ctx.ui.notify(text.ui.modeDisabled, "info");
       return;
     }
@@ -65,7 +65,7 @@ export async function collabCommand(
     const config = await selectConfig(ctx, state.config);
 
     if (config) {
-      collab.updateConfig(ctx, config);
+      collab.updateConfig(config);
       ctx.ui.notify(text.ui.configurationUpdated, "info");
       return;
     }
