@@ -40,7 +40,7 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
           return {
             content: [{ type: "text", text: text.model.waitInterruptedResult }],
             details: {},
-            isError: false,
+            isError: true,
           };
         case "report":
           return {
