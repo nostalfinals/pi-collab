@@ -21,7 +21,7 @@ export const text = {
     collabWaitToolLabel: "Collab wait",
   },
   model: {
-    collaboratorSystemPrompt: "",
+    collaboratorSystemPrompt: "TODO - To be filled",
     sendDescription: "",
     waitDescription: "",
     sendResult: "",
