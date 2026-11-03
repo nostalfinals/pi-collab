@@ -46,12 +46,13 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
           return {
             content: [{ type: "text", text: text.model.waitAbortedResult }],
             details: {},
-            isError: false,
+            isError: true,
           };
         case "report":
           return {
             content: [{ type: "text", text: text.model.waitResult(result.report) }],
             details: {},
+            isError: false,
           };
       }
     },
