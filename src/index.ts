@@ -31,6 +31,12 @@ export default function (pi: ExtensionAPI) {
     );
   });
 
+  pi.on("message_start", (event) => {
+    if (event.message.role === "custom") {
+      collab.handleLeadMessageStart(event.message.customType);
+    }
+  });
+
   pi.on("input", (event) => {
     if (event.streamingBehavior === "steer") {
       void collab.interruptWaitAfterInput();

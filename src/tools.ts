@@ -48,6 +48,13 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
             isError: true,
           };
 
+        case "reportQueued":
+          return {
+            content: [{ type: "text", text: text.model.waitReportQueuedResult }],
+            details: {},
+            isError: false,
+          };
+
         case "interrupted":
           return {
             content: [{ type: "text", text: text.model.waitInterruptedResult }],

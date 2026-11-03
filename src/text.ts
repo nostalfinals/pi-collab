@@ -26,6 +26,8 @@ export const text = {
     waitDescription: "Wait for the collaborator to finish. The tool result contains its final message.",
     sendResult: "Message sent.",
     waitTimeoutResult: (timeout: number) => `The collaborator did not finish within ${timeout} seconds.`,
+    waitReportQueuedResult:
+      "The collaborator finished before the wait started; its report is already queued for delivery.",
     waitInterruptedResult: "Waiting was interrupted by a user message.",
     waitAbortedResult: "Waiting was aborted.",
     waitResult: (report: string, fullOutputPath?: string) =>

@@ -23,7 +23,11 @@ interface CollabState {
 }
 
 export type CollabWaitResult =
-  { type: "report"; report: string } | { type: "interrupted" } | { type: "aborted" } | { type: "timeout" };
+  | { type: "report"; report: string }
+  | { type: "reportQueued" }
+  | { type: "interrupted" }
+  | { type: "aborted" }
+  | { type: "timeout" };
 
 interface Delivery<T> {
   promise: Promise<T>;
@@ -46,6 +50,7 @@ export class CollabMode {
   private collaboratorSession: Promise<AgentSession> | undefined;
   private collaboratorReport: string | undefined;
   private reportDelivery: Delivery<CollabWaitResult> | undefined;
+  private pendingCollaboratorSteer = false;
   private leadContext: ExtensionContext | undefined;
   private cachedState: CollabState | undefined;
 
@@ -137,6 +142,10 @@ export class CollabMode {
 
     const session = await this.collaboratorSession;
 
+    if (this.pendingCollaboratorSteer) {
+      return { type: "reportQueued" };
+    }
+
     if (session.isIdle) {
       throw new Error(text.model.collaboratorNotRunning);
     }
@@ -209,6 +218,7 @@ export class CollabMode {
     this.collaboratorSession = undefined;
     this.collaboratorReport = undefined;
     this.reportDelivery = undefined;
+    this.pendingCollaboratorSteer = false;
     this.leadContext = undefined;
     this.cachedState = undefined;
 
@@ -295,6 +305,12 @@ export class CollabMode {
     return session;
   }
 
+  handleLeadMessageStart(customType: string): void {
+    if (customType === reportMessageType) {
+      this.pendingCollaboratorSteer = false;
+    }
+  }
+
   private deliverReport(report: string): void {
     const delivery = this.reportDelivery;
 
@@ -319,6 +335,7 @@ export class CollabMode {
     if (ctx.isIdle()) {
       this.pi.sendMessage(message, { triggerTurn: true });
     } else {
+      this.pendingCollaboratorSteer = true;
       this.pi.sendMessage(message, { triggerTurn: true, deliverAs: "steer" });
     }
   }
