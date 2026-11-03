@@ -66,6 +66,10 @@ export class CollabMode {
     return this.leadContext;
   }
 
+  get hasPendingWait(): boolean {
+    return this.reportDelivery !== undefined;
+  }
+
   get state(): CollabState | undefined {
     if (this.cachedState) {
       return this.cachedState;
@@ -200,11 +204,18 @@ export class CollabMode {
 
   async dispose(): Promise<void> {
     const session = this.collaboratorSession;
+    const delivery = this.reportDelivery;
+
     this.collaboratorSession = undefined;
     this.collaboratorReport = undefined;
     this.reportDelivery = undefined;
     this.leadContext = undefined;
     this.cachedState = undefined;
+
+    if (delivery) {
+      delivery.deliver({ type: "aborted" });
+    }
+
     if (session) {
       (await session).dispose();
     }

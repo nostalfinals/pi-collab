@@ -37,5 +37,18 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.on("session_shutdown", () => collab.dispose());
+  // Let an aborted wait persist its tool result before Pi tears down the session.
+  pi.on("session_shutdown", async (_event, ctx) => {
+    if (collab.hasPendingWait && !ctx.isIdle()) {
+      const settled = new Promise<void>((resolve) => {
+        const unsubscribe = pi.on("agent_settled", () => {
+          unsubscribe();
+          resolve();
+        });
+      });
+      ctx.abort();
+      await settled;
+    }
+    await collab.dispose();
+  });
 }
