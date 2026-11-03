@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { copyFile, mkdir, readdir } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
@@ -8,6 +9,7 @@ import {
   type AgentSession,
   type ExtensionAPI,
   type ExtensionContext,
+  type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { text } from "./text.ts";
 
@@ -20,6 +22,10 @@ export interface CollabConfig {
 interface CollabState {
   mode: "active" | "paused";
   config: CollabConfig;
+}
+
+interface CollaboratorAnchor {
+  collaboratorEntryId: string;
 }
 
 export type CollabWaitResult =
@@ -43,8 +49,48 @@ function createPendingDelivery<T>(): Delivery<T> {
 }
 
 const stateType = "collab-mode-state";
+const anchorType = "collab-anchor";
 const reportMessageType = "collab-report";
 const collabToolNames = ["collab_send", "collab_wait"];
+
+async function findCollaboratorFile(sessionDir: string, leadSessionId: string): Promise<string | undefined> {
+  const collabDir = join(sessionDir, "collab");
+  let names: string[];
+
+  try {
+    names = await readdir(collabDir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+
+  const name = names.find((name) => name === `${leadSessionId}.jsonl` || name.endsWith(`_${leadSessionId}.jsonl`));
+  return name ? join(collabDir, name) : undefined;
+}
+
+function findCollaboratorLeaf(entries: SessionEntry[], anchorId: string): string | null {
+  const anchorIndex = entries.findIndex((entry) => entry.id === anchorId);
+  if (anchorIndex === -1) {
+    return null;
+  }
+
+  const nextUserIndex = entries.findIndex(
+    (entry, index) => index > anchorIndex && entry.type === "message" && entry.message.role === "user",
+  );
+  if (nextUserIndex === -1) {
+    return entries.at(-1)?.id ?? null;
+  }
+
+  for (let i = nextUserIndex - 1; i > anchorIndex; i--) {
+    const entry = entries[i];
+    if (entry?.type === "message" && entry.message.role === "assistant") {
+      return entry.id;
+    }
+  }
+  return entries[nextUserIndex - 1]?.id ?? entries[anchorIndex]?.id ?? null;
+}
 
 export class CollabMode {
   private collaboratorSession: Promise<AgentSession> | undefined;
@@ -115,6 +161,39 @@ export class CollabMode {
     };
     this.pi.appendEntry<CollabState>(stateType, state);
     this.cachedState = state;
+  }
+
+  async copyCollaboratorForFork(previousSessionFile: string): Promise<void> {
+    const previousManager = SessionManager.open(previousSessionFile);
+    const previousId = previousManager.getSessionId();
+    const source = await findCollaboratorFile(dirname(previousSessionFile), previousId);
+    if (!source) {
+      return;
+    }
+
+    const ctx = this.context;
+    const targetDir = join(ctx.sessionManager.getSessionDir(), "collab");
+    const sourceSuffix = `${previousId}.jsonl`;
+    const targetName = `${basename(source).slice(0, -sourceSuffix.length)}${ctx.sessionManager.getSessionId()}.jsonl`;
+    await mkdir(targetDir, { recursive: true });
+    await copyFile(source, join(targetDir, targetName));
+  }
+
+  // Tear down the old branch's collaborator and invalidate branch-local state.
+  // The next creation reopens the file and positions its leaf from the latest Lead anchor.
+  async syncBranch(): Promise<void> {
+    this.cachedState = undefined;
+    this.pendingCollaboratorSteer = false;
+    const sessionPromise = this.collaboratorSession;
+
+    await this.abortCollaborator();
+    if (!sessionPromise) {
+      return;
+    }
+
+    const session = await sessionPromise;
+    this.collaboratorSession = undefined;
+    session.dispose();
   }
 
   async sendToCollaborator(message: string): Promise<void> {
@@ -266,10 +345,26 @@ export class CollabMode {
 
     await resourceLoader.reload();
 
-    const sessionDir = join(ctx.sessionManager.getSessionDir(), "collab");
-    const sessionManager = SessionManager.create(ctx.cwd, sessionDir, {
-      id: ctx.sessionManager.getSessionId(),
-    });
+    const sessionDir = ctx.sessionManager.getSessionDir();
+    const sessionFile = await findCollaboratorFile(sessionDir, ctx.sessionManager.getSessionId());
+    const sessionManager = sessionFile
+      ? SessionManager.open(sessionFile)
+      : SessionManager.create(ctx.cwd, join(sessionDir, "collab"), {
+          id: ctx.sessionManager.getSessionId(),
+        });
+    const anchor = [...ctx.sessionManager.getBranch()]
+      .reverse()
+      .find((entry) => entry.type === "custom" && entry.customType === anchorType);
+    const anchorData = anchor?.type === "custom" ? (anchor.data as CollaboratorAnchor | undefined) : undefined;
+    const leafId = anchorData
+      ? findCollaboratorLeaf(sessionManager.getEntries(), anchorData.collaboratorEntryId)
+      : null;
+    if (leafId) {
+      sessionManager.branch(leafId);
+    } else {
+      sessionManager.resetLeaf();
+    }
+
     const { session } = await createAgentSession({
       cwd: ctx.cwd,
       agentDir,
@@ -281,7 +376,15 @@ export class CollabMode {
     });
 
     session.subscribe((event) => {
-      if (
+      if (event.type === "message_end" && event.message.role === "user") {
+        // AgentSession persists the message after notifying subscribers.
+        queueMicrotask(() => {
+          const collaboratorEntryId = session.sessionManager.getLeafId();
+          if (collaboratorEntryId && this.leadContext) {
+            this.pi.appendEntry<CollaboratorAnchor>(anchorType, { collaboratorEntryId });
+          }
+        });
+      } else if (
         event.type === "message_end" &&
         event.message.role === "assistant" &&
         event.message.stopReason !== "aborted"

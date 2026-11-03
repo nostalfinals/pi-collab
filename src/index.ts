@@ -15,8 +15,16 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => collabCommand(collab, ctx),
   });
 
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", async (event, ctx) => {
     collab.extensionContext = ctx;
+    if (event.reason === "fork" && event.previousSessionFile) {
+      await collab.copyCollaboratorForFork(event.previousSessionFile);
+    }
+  });
+
+  pi.on("session_tree", async (_event, ctx) => {
+    collab.extensionContext = ctx;
+    await collab.syncBranch();
   });
 
   pi.on("agent_start", (_event, ctx) => {
