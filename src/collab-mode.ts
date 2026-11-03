@@ -22,7 +22,8 @@ interface CollabState {
   config: CollabConfig;
 }
 
-export type CollabWaitResult = { type: "report"; report: string } | { type: "interrupted" } | { type: "timeout" };
+export type CollabWaitResult =
+  { type: "report"; report: string } | { type: "interrupted" } | { type: "aborted" } | { type: "timeout" };
 
 interface Delivery<T> {
   promise: Promise<T>;
@@ -185,6 +186,18 @@ export class CollabMode {
     }
   }
 
+  async abortCollaborator(): Promise<void> {
+    this.collaboratorReport = undefined;
+    const delivery = this.reportDelivery;
+    if (delivery) {
+      this.reportDelivery = undefined;
+      delivery.deliver({ type: "aborted" });
+    }
+
+    const session = await this.collaboratorSession;
+    await session?.abort();
+  }
+
   async dispose(): Promise<void> {
     const session = this.collaboratorSession;
     this.collaboratorSession = undefined;
@@ -247,7 +260,11 @@ export class CollabMode {
     });
 
     session.subscribe((event) => {
-      if (event.type === "message_end" && event.message.role === "assistant") {
+      if (
+        event.type === "message_end" &&
+        event.message.role === "assistant" &&
+        event.message.stopReason !== "aborted"
+      ) {
         const report = event.message.content
           .filter((part) => part.type === "text")
           .at(-1)

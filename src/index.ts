@@ -19,6 +19,18 @@ export default function (pi: ExtensionAPI) {
     collab.extensionContext = ctx;
   });
 
+  pi.on("agent_start", (_event, ctx) => {
+    ctx.signal?.addEventListener(
+      "abort",
+      () => {
+        void collab.abortCollaborator().catch((error: unknown) => {
+          console.error("Failed to abort collaborator.", error);
+        });
+      },
+      { once: true },
+    );
+  });
+
   pi.on("input", (event) => {
     if (event.streamingBehavior === "steer") {
       void collab.interruptWaitAfterInput();
