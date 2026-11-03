@@ -28,7 +28,10 @@ export const text = {
     waitTimeoutResult: (timeout: number) => `The collaborator did not finish within ${timeout} seconds.`,
     waitInterruptedResult: "Waiting was interrupted by a user message.",
     waitAbortedResult: "Waiting was aborted.",
-    waitResult: (report: string) => `<report_from_collaborator>${report}</report_from_collaborator>`,
+    waitResult: (report: string, fullOutputPath?: string) =>
+      `<report_from_collaborator>${report}</report_from_collaborator>${
+        fullOutputPath ? `\n\n[Report truncated. Full report: ${fullOutputPath}]` : ""
+      }`,
     collabInactive: "Collab mode is not active. Ask the user to enable it with /collab before sending messages.",
     noCollaborator: "No collaborator session exists. Use collab_send before calling collab_wait.",
     collaboratorNotRunning: "The collaborator is not running; there is nothing to wait for.",
