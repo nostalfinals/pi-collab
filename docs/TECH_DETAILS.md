@@ -184,27 +184,35 @@ pi.sendMessage(reminder, { deliverAs: "steer" })
 ### 7.3 wait 结果
 
 - `wait` 只等协作者彻底停下，不再区分 message / settle 模式。
-- 结果：`state`（completed / error / aborted / cancelled）+ 本轮 report；未产生最终文本时没有 report，不拿中间文本代替。
-- 支持超时；超时返回当前 `state`，不提前返回 report。Lead 继续活跃，可以再 inspect / send / wait。
-- report 如果太长，按类似 bash 的 50k 上限截断，并给出 entry 范围。
+- 只有协作者停下时，结果才带 `state`，写成 `<collaborator_report state="...">`：
+  - `completed`：最后一条 assistant 消息正常结束（`stopReason === "stop"`），标签里放它的文字作为 report；没有文字就是空标签。
+  - `error`：其他停止原因（出错、达到输出上限、工具调用后被结束等），或这一轮没能启动。标签里放按原因写的说明，后面附原始错误；不带任何 report，中途的文字也不算。
+  - 出错时同时给用户弹 `Collaborator error: 原文` 的红字提示。
+- 其他结果不带 `state`，各自的文字已经说明了协作者的状态：
+  - 超时：协作者还在跑，不提前返回 report。Lead 继续活跃，可以再 inspect / send / wait。
+  - `interrupted`：用户打断，协作者还在跑，见 7.5。
+  - `aborted`：Lead 被中断，协作者也跟着被中断。
+  - `reportQueued`：协作者在 wait 开始前已经停下，结果已经作为消息排队投递。
+- 不设 `cancelled`。以后如果加了 Lead 主动取消协作者的工具，再定它的结果。
+- report 如果太长，按类似 bash 的 50k 上限截断，完整内容写到临时文件，并在结果里给出路径。
 
 ### 7.4 等待状态机
 
 - `waiting`：是否正在等待，一次只允许一个 wait；第二个直接报错。
 - 存的是 resolve 回调，不是 promise 本身。
-- 开始时先设状态，再检查协作者是否已经 idle；已 idle 就立即返回运行状态和最近一轮 report，避免错过 settle 事件。
+- 开始时先检查是否有已排队的结果（返回 `reportQueued`），再检查协作者是否空闲；空闲就直接报错，因为它上一轮的结果已经投递给 Lead 了。
 - 超时 / abort 必须同步清理等待状态和 resolve。
 
 ### 7.5 被 steer 打断
 
-- 用户在 wait 期间发消息 → 用 `interrupted` 结果结束等待，`isError: false`，带上当前 state。
+- 用户在 wait 期间发消息 → 用 `interrupted` 结果结束等待，`isError: true`。
 - 用户消息作为单独消息出现在同一请求里，不塞进 tool result。
 - 只对 `streamingBehavior === "steer"` 打断，`followUp` 不打断。
 - 实现方式：`input` 事件后等一个 tick，再检查 `ctx.hasPendingMessages()`；图片处理可能延迟入队，所以用短间隔重试。
 - 为什么不能直接在 `input` 里 resolve：`input` 比消息入队早，wait 返回后 loop 可能 poll 到空队列，steer 会迟一轮。
 - 已核实：agent loop 在工具批次结束之后、下一次请求之前 drain steering。只要 steer 已在队列里，tool result 和 steer 会进同一请求。
 - `hasPendingMessages()` 能看到用户 steer（`_queueSteer` 先 push 到 session 的 `_steeringMessages`，再 `agent.steer`，同步完成），但看不到扩展用 `sendMessage({ deliverAs: "steer" })` 塞的 custom message。
-- 协作者 report 恰好在 wait 前被投递为 steer 的窄竞态：用一个 boolean `pendingCollaboratorSteer`，投递时置 true，Lead 的 `message_start` 看到对应 customType 时清掉；wait 开始时如果为 true，直接返回 `interrupted`。
+- 协作者 report 恰好在 wait 前被投递为 steer 的窄竞态：用一个 boolean `pendingCollaboratorSteer`，投递时置 true，Lead 的 `message_start` 看到对应 customType 时清掉；wait 开始时如果为 true，直接返回 `reportQueued`。
 
 ### 7.6 取消与导航
 
