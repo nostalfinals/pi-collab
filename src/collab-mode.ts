@@ -223,7 +223,14 @@ export class CollabMode {
       throw new Error(text.model.collabInactive);
     }
 
-    const session = await this.getOrCreateCollaborator(state.config);
+    let session: AgentSession;
+
+    try {
+      session = await this.getOrCreateCollaborator(state.config);
+    } catch (error) {
+      this.notifyError(error instanceof Error ? error.message : String(error));
+      throw error;
+    }
 
     if (!session.isStreaming) {
       this.lastAssistant = undefined;
