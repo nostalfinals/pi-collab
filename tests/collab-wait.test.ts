@@ -23,7 +23,7 @@ it("truncates reports over 50 KB and saves the full report", async () => {
   } as unknown as ExtensionAPI;
 
   const collab = {
-    waitForCollaborator: async () => ({ type: "report", report }),
+    waitForCollaborator: async () => ({ type: "settled", state: "completed", report }),
   } as unknown as CollabMode;
 
   registerCollabTools(pi, collab);

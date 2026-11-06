@@ -1,6 +1,6 @@
 import { copyFile, mkdir, readdir } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -28,8 +28,14 @@ interface CollaboratorAnchor {
   collaboratorEntryId: string;
 }
 
+export interface CollaboratorOutcome {
+  state: "completed" | "error";
+  report?: string;
+  error?: string;
+}
+
 export type CollabWaitResult =
-  | { type: "report"; report: string }
+  | ({ type: "settled" } & CollaboratorOutcome)
   | { type: "reportQueued" }
   | { type: "interrupted" }
   | { type: "aborted" }
@@ -94,7 +100,7 @@ function findCollaboratorLeaf(entries: SessionEntry[], anchorId: string): string
 
 export class CollabMode {
   private collaboratorSession: Promise<AgentSession> | undefined;
-  private collaboratorReport: string | undefined;
+  private lastAssistant: AssistantMessage | undefined;
   private reportDelivery: Delivery<CollabWaitResult> | undefined;
   private pendingCollaboratorSteer = false;
   private leadContext: ExtensionContext | undefined;
@@ -139,7 +145,8 @@ export class CollabMode {
     return undefined;
   }
 
-  enable(config: CollabConfig): void {
+  async enable(config: CollabConfig): Promise<void> {
+    await this.applyConfig(config);
     const state: CollabState = { mode: "active", config };
     this.pi.appendEntry<CollabState>(stateType, state);
     this.cachedState = state;
@@ -154,7 +161,8 @@ export class CollabMode {
     }
   }
 
-  updateConfig(config: CollabConfig): void {
+  async updateConfig(config: CollabConfig): Promise<void> {
+    await this.applyConfig(config);
     const state: CollabState = {
       mode: this.state?.mode ?? "paused",
       config,
@@ -163,10 +171,21 @@ export class CollabMode {
     this.cachedState = state;
   }
 
+  // An existing collaborator picks up the new model on its next request.
+  // Throws without changing anything if the model is missing or has no auth.
+  private async applyConfig(config: CollabConfig): Promise<void> {
+    const session = await this.collaboratorSession?.catch(() => undefined);
+    if (session) {
+      await session.setModel(this.findModel(config));
+      session.setThinkingLevel(config.thinkingLevel);
+    }
+  }
+
   async copyCollaboratorForFork(previousSessionFile: string): Promise<void> {
     const previousManager = SessionManager.open(previousSessionFile);
     const previousId = previousManager.getSessionId();
     const source = await findCollaboratorFile(dirname(previousSessionFile), previousId);
+
     if (!source) {
       return;
     }
@@ -175,6 +194,7 @@ export class CollabMode {
     const targetDir = join(ctx.sessionManager.getSessionDir(), "collab");
     const sourceSuffix = `${previousId}.jsonl`;
     const targetName = `${basename(source).slice(0, -sourceSuffix.length)}${ctx.sessionManager.getSessionId()}.jsonl`;
+
     await mkdir(targetDir, { recursive: true });
     await copyFile(source, join(targetDir, targetName));
   }
@@ -206,11 +226,13 @@ export class CollabMode {
     const session = await this.getOrCreateCollaborator(state.config);
 
     if (!session.isStreaming) {
-      this.collaboratorReport = undefined;
+      this.lastAssistant = undefined;
     }
 
     void session.prompt(message, { streamingBehavior: "steer" }).catch((error: unknown) => {
-      this.deliverReport(error instanceof Error ? error.message : String(error));
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.notifyError(errorMessage);
+      this.deliverOutcome({ state: "error", error: text.model.collaboratorStartFailed(errorMessage) });
     });
   }
 
@@ -279,7 +301,7 @@ export class CollabMode {
   }
 
   async abortCollaborator(): Promise<void> {
-    this.collaboratorReport = undefined;
+    this.lastAssistant = undefined;
     const delivery = this.reportDelivery;
     if (delivery) {
       this.reportDelivery = undefined;
@@ -295,7 +317,7 @@ export class CollabMode {
     const delivery = this.reportDelivery;
 
     this.collaboratorSession = undefined;
-    this.collaboratorReport = undefined;
+    this.lastAssistant = undefined;
     this.reportDelivery = undefined;
     this.pendingCollaboratorSteer = false;
     this.leadContext = undefined;
@@ -325,12 +347,7 @@ export class CollabMode {
 
   private async createCollaborator(config: CollabConfig): Promise<AgentSession> {
     const ctx = this.context;
-    const model = ctx.modelRegistry.find(config.provider, config.modelId);
-
-    if (!model) {
-      throw new Error(`Model not found: ${config.provider}/${config.modelId}`);
-    }
-
+    const model = this.findModel(config);
     const agentDir = getAgentDir();
     const resourceLoader = new DefaultResourceLoader({
       cwd: ctx.cwd,
@@ -384,28 +401,46 @@ export class CollabMode {
             this.pi.appendEntry<CollaboratorAnchor>(anchorType, { collaboratorEntryId });
           }
         });
-      } else if (
-        event.type === "message_end" &&
-        event.message.role === "assistant" &&
-        event.message.stopReason !== "aborted"
-      ) {
-        const report = event.message.content
-          .filter((part) => part.type === "text")
-          .at(-1)
-          ?.text.trim();
-        if (report) {
-          this.collaboratorReport = report;
-        }
+      } else if (event.type === "message_end" && event.message.role === "assistant") {
+        this.lastAssistant = event.message;
       } else if (event.type === "agent_settled") {
-        const report = this.collaboratorReport;
-        this.collaboratorReport = undefined;
-        if (report !== undefined) {
-          this.deliverReport(report);
+        const last = this.lastAssistant;
+        this.lastAssistant = undefined;
+        if (event.aborted) {
+          return;
         }
+        if (last?.stopReason !== "stop") {
+          if (last?.errorMessage) {
+            this.notifyError(last.errorMessage);
+          }
+          this.deliverOutcome({
+            state: "error",
+            error: text.model.collaboratorStoppedWithError(last?.stopReason, last?.errorMessage),
+          });
+          return;
+        }
+        const report = last.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("\n")
+          .trim();
+        this.deliverOutcome({ state: "completed", report: report || undefined });
       }
     });
 
     return session;
+  }
+
+  private notifyError(error: string): void {
+    this.leadContext?.ui.notify(text.ui.collaboratorError(error), "error");
+  }
+
+  private findModel(config: CollabConfig): Model<Api> {
+    const model = this.context.modelRegistry.find(config.provider, config.modelId);
+    if (!model) {
+      throw new Error(`Model not found: ${config.provider}/${config.modelId}`);
+    }
+    return model;
   }
 
   handleLeadMessageStart(customType: string): void {
@@ -414,12 +449,12 @@ export class CollabMode {
     }
   }
 
-  private deliverReport(report: string): void {
+  private deliverOutcome(outcome: CollaboratorOutcome): void {
     const delivery = this.reportDelivery;
 
     if (delivery) {
       this.reportDelivery = undefined;
-      delivery.deliver({ type: "report", report });
+      delivery.deliver({ type: "settled", ...outcome });
       return;
     }
 
@@ -431,7 +466,7 @@ export class CollabMode {
 
     const message = {
       customType: reportMessageType,
-      content: text.model.waitResult(report),
+      content: text.model.collaboratorOutcome(outcome),
       display: true,
     };
 

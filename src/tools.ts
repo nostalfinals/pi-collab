@@ -69,25 +69,32 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
             isError: true,
           };
 
-        case "report": {
-          const truncation = truncateTail(result.report);
+        case "settled": {
+          const outcome = { state: result.state, report: result.report, error: result.error };
+          const isError = outcome.state === "error";
+          const truncation = outcome.report === undefined ? undefined : truncateTail(outcome.report);
 
-          if (!truncation.truncated) {
+          if (!truncation?.truncated) {
             return {
-              content: [{ type: "text", text: text.model.waitResult(result.report) }],
+              content: [{ type: "text", text: text.model.collaboratorOutcome(outcome) }],
               details: {},
-              isError: false,
+              isError,
             };
           }
 
           const directory = await mkdtemp(join(tmpdir(), "pi-collab-"));
           const fullOutputPath = join(directory, "report.txt");
-          await writeFile(fullOutputPath, result.report, "utf8");
+          await writeFile(fullOutputPath, outcome.report!, "utf8");
 
           return {
-            content: [{ type: "text", text: text.model.waitResult(truncation.content, fullOutputPath) }],
+            content: [
+              {
+                type: "text",
+                text: text.model.collaboratorOutcome({ ...outcome, report: truncation.content }, fullOutputPath),
+              },
+            ],
             details: { truncation, fullOutputPath },
-            isError: false,
+            isError,
           };
         }
       }

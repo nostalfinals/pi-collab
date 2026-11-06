@@ -21,8 +21,7 @@ export async function collabCommand(collab: CollabMode, ctx: ExtensionCommandCon
 
   if (state?.mode !== "active") {
     const config = await selectConfig(ctx, state?.config);
-    if (config) {
-      collab.enable(config);
+    if (config && (await applyOrNotify(ctx, () => collab.enable(config)))) {
       ctx.ui.notify(text.ui.configurationSaved, "info");
     }
     return;
@@ -59,10 +58,21 @@ export async function collabCommand(collab: CollabMode, ctx: ExtensionCommandCon
     const config = await selectConfig(ctx, state.config);
 
     if (config) {
-      collab.updateConfig(config);
-      ctx.ui.notify(text.ui.configurationUpdated, "info");
+      if (await applyOrNotify(ctx, () => collab.updateConfig(config))) {
+        ctx.ui.notify(text.ui.configurationUpdated, "info");
+      }
       return;
     }
+  }
+}
+
+async function applyOrNotify(ctx: ExtensionContext, apply: () => Promise<void>): Promise<boolean> {
+  try {
+    await apply();
+    return true;
+  } catch (error) {
+    ctx.ui.notify(text.ui.configurationFailed(error instanceof Error ? error.message : String(error)), "error");
+    return false;
   }
 }
 

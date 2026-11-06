@@ -1,3 +1,6 @@
+import type { StopReason } from "@earendil-works/pi-ai";
+import type { CollaboratorOutcome } from "./collab-mode.ts";
+
 export const text = {
   ui: {
     collabCommandDescription: "Enable/disable or change the model for collab model",
@@ -5,6 +8,8 @@ export const text = {
     configurationSaved: "Collaborator configuration saved.",
     modeDisabled: "Collaborator mode disabled.",
     configurationUpdated: "Collaborator configuration updated.",
+    collaboratorError: (error: string) => `Collaborator error: ${error}`,
+    configurationFailed: (error: string) => `Failed to apply collaborator configuration: ${error}`,
     noModelsAvailable: "No models available. Configure a provider with /login first.",
     modelSelectorTitle: "Which model do you want to use for the collaborator?",
     overviewTitle: (model: string, effort: string) => `Collaborator · ${model} · ${effort}`,
@@ -30,10 +35,30 @@ export const text = {
       "The collaborator finished before the wait started; its report is already queued for delivery.",
     waitInterruptedResult: "Waiting was interrupted by a user message.",
     waitAbortedResult: "Waiting was aborted.",
-    waitResult: (report: string, fullOutputPath?: string) =>
-      `<report_from_collaborator>${report}</report_from_collaborator>${
-        fullOutputPath ? `\n\n[Report truncated. Full report: ${fullOutputPath}]` : ""
-      }`,
+    collaboratorStartFailed: (error: string) =>
+      `The collaborator could not start its run. This is usually a setup problem such as a missing model or missing authentication; ask the user to check the collaborator configuration.\n\nError: ${error}`,
+    collaboratorStoppedWithError: (stopReason: StopReason | undefined, error?: string): string => {
+      const detail = error ? `\n\nError: ${error}` : "";
+      switch (stopReason) {
+        case "error":
+          return `The collaborator's model request failed, so it stopped before finishing. This is usually a provider or network problem; sending again may work.${detail}`;
+        case "length":
+          return `The collaborator's response hit the output token limit and was cut off before it finished.${detail}`;
+        case "toolUse":
+          return `The collaborator's run was ended right after a tool call, before it wrote a final report.${detail}`;
+        case undefined:
+          return "The collaborator stopped without producing any response.";
+        default:
+          return `The collaborator stopped unexpectedly (${stopReason}).${detail}`;
+      }
+    },
+    collaboratorOutcome: (outcome: CollaboratorOutcome, fullOutputPath?: string) => {
+      const body = outcome.error ?? outcome.report;
+      const truncated = fullOutputPath ? `\n\n[Report truncated. Full report: ${fullOutputPath}]` : "";
+      return body
+        ? `<collaborator_report state="${outcome.state}">\n${body}\n</collaborator_report>${truncated}`
+        : `<collaborator_report state="${outcome.state}" />`;
+    },
     collabInactive: "Collab mode is not active. Ask the user to enable it with /collab before sending messages.",
     noCollaborator: "No collaborator session exists. Use collab_send before calling collab_wait.",
     collaboratorNotRunning: "The collaborator is not running; there is nothing to wait for.",
