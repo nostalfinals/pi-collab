@@ -7,6 +7,7 @@ import {
   getAgentDir,
   SessionManager,
   type AgentSession,
+  type CustomMessageEntry,
   type ExtensionAPI,
   type ExtensionContext,
   type SessionEntry,
@@ -57,6 +58,7 @@ function createPendingDelivery<T>(): Delivery<T> {
 const stateType = "collab-mode-state";
 const anchorType = "collab-anchor";
 const reportMessageType = "collab-report";
+const statusMessageType = "collab-status";
 const collabToolNames = ["collab_send", "collab_wait"];
 
 async function findCollaboratorFile(sessionDir: string, leadSessionId: string): Promise<string | undefined> {
@@ -150,6 +152,7 @@ export class CollabMode {
     const state: CollabState = { mode: "active", config };
     this.pi.appendEntry<CollabState>(stateType, state);
     this.cachedState = state;
+    this.sendStatusMessage();
   }
 
   disable(): void {
@@ -158,7 +161,51 @@ export class CollabMode {
       const state: CollabState = { ...current, mode: "paused" };
       this.pi.appendEntry<CollabState>(stateType, state);
       this.cachedState = state;
+      this.sendStatusMessage();
     }
+  }
+
+  // The last status message, if the latest compaction summarized it away. Only entries
+  // before that compaction are read, so the result stays the same between requests.
+  get statusMessageLostInCompaction(): CustomMessageEntry | undefined {
+    const branch = this.context.sessionManager.getBranch();
+    let compactionIndex = branch.length - 1;
+
+    while (compactionIndex >= 0 && branch[compactionIndex].type !== "compaction") {
+      compactionIndex--;
+    }
+
+    const compaction = branch[compactionIndex];
+
+    if (compaction?.type !== "compaction") {
+      return undefined;
+    }
+
+    // Pi appends the compaction entry after the kept window, which starts at firstKeptEntryId.
+    const keptIndex = branch.findIndex((entry) => entry.id === compaction.firstKeptEntryId);
+    const keptStart = keptIndex === -1 ? compactionIndex : keptIndex;
+
+    for (let i = compactionIndex - 1; i >= 0; i--) {
+      const entry = branch[i];
+      if (entry.type === "custom_message" && entry.customType === statusMessageType) {
+        return i < keptStart ? entry : undefined;
+      }
+    }
+
+    return undefined;
+  }
+
+  // Tells Lead the current mode. It does not start a turn; Lead sees it with the next request.
+  private sendStatusMessage(): void {
+    const mode = this.state?.mode;
+    if (!mode) {
+      return;
+    }
+    this.pi.sendMessage({
+      customType: statusMessageType,
+      content: mode === "active" ? text.prompt.collabEnabled : text.prompt.collabDisabled,
+      display: false,
+    });
   }
 
   async updateConfig(config: CollabConfig): Promise<void> {

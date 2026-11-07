@@ -27,6 +27,30 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
+  pi.on("context", (event) => {
+    const [summary, ...rest] = event.messages;
+    if (summary?.role !== "compactionSummary") {
+      return;
+    }
+    const status = collab.statusMessageLostInCompaction;
+    if (!status) {
+      return;
+    }
+    return {
+      messages: [
+        summary,
+        {
+          role: "custom",
+          customType: status.customType,
+          content: status.content,
+          display: status.display,
+          timestamp: new Date(status.timestamp).getTime(),
+        },
+        ...rest,
+      ],
+    };
+  });
+
   pi.on("session_tree", async (_event, ctx) => {
     collab.extensionContext = ctx;
     await collab.syncBranch();

@@ -29,6 +29,8 @@ export const text = {
     leadSection:
       "Tools whose names start with `collab_` belong to collab mode. Only use them after the user has turned on collab mode. You will receive a notification when collab mode is turned on.",
     collaboratorSection: "TODO - To be filled",
+    collabEnabled: "TODO - To be filled",
+    collabDisabled: "TODO - To be filled",
   },
   model: {
     sendDescription: "Send a message or steer the collaborator.",
