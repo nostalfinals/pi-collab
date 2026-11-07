@@ -75,7 +75,7 @@
   - `not_started` → `active`：开启。
   - `active` → `paused`：协作者空闲时关闭。
   - `paused` → `active`：再次开启。
-- 开启消息统一为："collab mode is currently on，读取 collab skill 了解工作流程。"
+- 开启消息统一为："collab mode is currently on，读取 collab-mode skill 了解工作流程。"
   - 第一次开、重新开、压缩后恢复都用同一句，不需要区分 re-read。
 - 关闭消息说明：只能读、不能发，当前没有运行中的协作者。
 - `not_started` 不需要状态消息，常驻的短说明已经覆盖。
@@ -96,7 +96,7 @@
 
 ### 5.2 协议放 skill
 
-- 完整协作协议放在扩展自带的 skill：`skills/collab/SKILL.md`。
+- 完整协作协议放在扩展自带的 skill：`skills/collab-mode/SKILL.md`。
 - 通过 `resources_discover` 返回 `{ skillPaths: [...] }` 暴露。
 - description 写明"用户明确开启 collab mode 时读取"。
 - skill 的描述常驻 system prompt，完整内容只在模型读取时进入上下文；压缩后还能再读。
@@ -105,8 +105,8 @@
 
 两种可选：
 
-- 发一条"已开启，读 collab skill"；
-- 或 `pi.sendUserMessage("/skill:collab", { expandPromptTemplates: true })` 直接展开内容。
+- 发一条"已开启，读 collab-mode skill"；
+- 或 `pi.sendUserMessage("/skill:collab-mode", { expandPromptTemplates: true })` 直接展开内容。
 
 前者省一次工具调用，但依赖模型听话；后者规则立刻到位，但内容会进对话，压缩后可能被丢掉（仍可靠 skill 再读）。
 
@@ -393,7 +393,7 @@ agent_end（TUI 清掉转圈）
 - 创建协作者 session，自定义 prompt，工具：read / bash / edit / write；最终 assistant text 作为 report。
 - Lead 工具：`send`（handoff / steer）、`wait`、简单 `inspect`。
 - 状态只用 `not_started` / `active`，custom entry + 开启消息。
-- 常驻短 section + collab skill。
+- 常驻短 section + collab-mode skill。
 - 不做 pause、分支同步、fork 复制、压缩补状态、nudge。
 
 ### 第二层：生命周期
