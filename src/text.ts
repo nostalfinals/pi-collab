@@ -26,6 +26,7 @@ export const text = {
     collabSendToolLabel: "Collab send",
     collabWaitToolLabel: "Collab wait",
     collabInspectToolLabel: "Collab inspect",
+    collabInterruptToolLabel: "Collab interrupt",
   },
   prompt: {
     reminder: (body: string) => `<collab_reminder>\n${body}\n</collab_reminder>`,
@@ -42,12 +43,16 @@ export const text = {
       "Wait up to `timeout` seconds for the collaborator's run to end and return its report. If the wait times out, the collaborator keeps running. If the run already ended, its report arrives as a message instead. A user message interrupts the wait.",
     inspectDescription:
       "Show whether the collaborator is running and its most recent activity: its text messages and tool calls, oldest first. `count` sets how many to return (default 5). Thinking and tool results are not included, and long tool arguments are cut short. Works whether the collaborator is running or idle, and while collab mode is disabled.",
+    interruptDescription:
+      "Stop the collaborator's current run, for example when it is stuck on a command that does not return. Queued messages to the collaborator are dropped. The collaborator keeps its context, and the interrupted run produces no report. Use collab_send to start a new run.",
     sendResult: "Message sent.",
+    interruptResult: "The collaborator was interrupted.",
     waitTimeoutResult: (timeout: number) => `The collaborator did not finish within ${timeout} seconds.`,
     waitReportQueuedResult:
       "The collaborator finished before the wait started; its report is already queued for delivery.",
-    waitInterruptedResult: "Waiting was interrupted by a user message.",
+    waitInterruptedByUserResult: "Waiting was interrupted by a user message.",
     waitAbortedResult: "Waiting was aborted.",
+    waitCollaboratorInterruptedResult: "The collaborator was interrupted, so there is no report.",
     collaboratorStartFailed: (error: string) =>
       `The collaborator could not start its run. This is usually a setup problem such as a missing model or missing authentication; ask the user to check the collaborator configuration.\n\nError: ${error}`,
     collaboratorStoppedWithError: (stopReason: StopReason | undefined, error?: string): string => {
@@ -86,7 +91,7 @@ export const text = {
     },
     collabInactive: "Collab mode is not active. Ask the user to enable it with /collab before using collab tools.",
     noCollaborator: "No collaborator session exists yet. Use collab_send to give it an assignment first.",
-    collaboratorNotRunning: "The collaborator is not running; there is nothing to wait for.",
+    collaboratorNotRunning: "The collaborator is not running.",
     waitAlreadyPending: "A collab_wait call is already in progress. Only one wait can be active at a time.",
   },
 };

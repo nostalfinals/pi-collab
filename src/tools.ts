@@ -67,9 +67,9 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
             isError: false,
           };
 
-        case "interrupted":
+        case "interruptedByUser":
           return {
-            content: [{ type: "text", text: text.model.waitInterruptedResult }],
+            content: [{ type: "text", text: text.model.waitInterruptedByUserResult }],
             details: {},
             isError: true,
           };
@@ -77,6 +77,13 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
         case "aborted":
           return {
             content: [{ type: "text", text: text.model.waitAbortedResult }],
+            details: {},
+            isError: true,
+          };
+
+        case "collaboratorInterrupted":
+          return {
+            content: [{ type: "text", text: text.model.waitCollaboratorInterruptedResult }],
             details: {},
             isError: true,
           };
@@ -130,6 +137,20 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
       return {
         content: [{ type: "text", text: truncation.content + text.model.truncatedOutput(fullOutputPath) }],
         details: { truncation, fullOutputPath },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "collab_interrupt",
+    label: text.ui.collabInterruptToolLabel,
+    description: text.model.interruptDescription,
+    parameters: Type.Object({}),
+    execute: async () => {
+      await collab.interruptCollaborator();
+      return {
+        content: [{ type: "text", text: text.model.interruptResult }],
+        details: {},
       };
     },
   });

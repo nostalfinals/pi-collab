@@ -50,8 +50,9 @@ export interface CollaboratorInspection {
 export type CollabWaitResult =
   | ({ type: "settled" } & CollaboratorOutcome)
   | { type: "reportQueued" }
-  | { type: "interrupted" }
+  | { type: "interruptedByUser" }
   | { type: "aborted" }
+  | { type: "collaboratorInterrupted" }
   | { type: "timeout" };
 
 interface Delivery<T> {
@@ -71,7 +72,7 @@ const stateType = "collab-mode-state";
 const anchorType = "collab-anchor";
 const reportMessageType = "collab-report";
 const statusMessageType = "collab-status";
-const collabToolNames = ["collab_send", "collab_wait", "collab_inspect"];
+const collabToolNames = ["collab_send", "collab_wait", "collab_inspect", "collab_interrupt"];
 const maxToolArgumentsLength = 500;
 
 async function findCollaboratorFile(sessionDir: string, leadSessionId: string): Promise<string | undefined> {
@@ -414,10 +415,25 @@ export class CollabMode {
 
       if (this.context.hasPendingMessages()) {
         this.reportDelivery = undefined;
-        delivery.deliver({ type: "interrupted" });
+        delivery.deliver({ type: "interruptedByUser" });
         return;
       }
     }
+  }
+
+  async interruptCollaborator(): Promise<void> {
+    if (this.state?.mode !== "active") {
+      throw new Error(text.model.collabInactive);
+    }
+
+    const session = await this.collaboratorSession;
+
+    if (!session || session.isIdle) {
+      throw new Error(text.model.collaboratorNotRunning);
+    }
+
+    session.clearQueue();
+    await session.abort();
   }
 
   async abortCollaborator(): Promise<void> {
@@ -536,6 +552,13 @@ export class CollabMode {
         const last = this.lastAssistant;
         this.lastAssistant = undefined;
         if (event.aborted) {
+          // Aborted runs have no report. Only a wait that started while the abort was
+          // in progress is still pending here; Lead-side aborts end their wait earlier.
+          const delivery = this.reportDelivery;
+          if (delivery) {
+            this.reportDelivery = undefined;
+            delivery.deliver({ type: "collaboratorInterrupted" });
+          }
           return;
         }
         if (last?.stopReason !== "stop") {

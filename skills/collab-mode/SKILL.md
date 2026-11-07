@@ -58,7 +58,7 @@ Avoid simultaneous edits to the same files or tightly coupled code unless owners
 
 Never end your turn while the collaborator is running. Once you have finished the work you can do on your own, call `collab_wait` and wait for its report.
 
-Choose a timeout that matches how long the assignment should reasonably take, and prefer several bounded waits over one very long wait. When a wait times out, you get control back. Use `collab_inspect` to check its progress, and send it a correction if it is going off track. Narrow or redirect the assignment rather than taking the work over yourself. Otherwise, keep waiting or do other work first.
+Choose a timeout that matches how long the assignment should reasonably take, and prefer several bounded waits over one very long wait. When a wait times out, you get control back. Use `collab_inspect` to check its progress, and send it a correction if it is going off track. Narrow or redirect the assignment rather than taking the work over yourself. If it is stuck, for example on a command that never returns, or a correction cannot save the run, stop it with `collab_interrupt`. Otherwise, keep waiting or do other work first.
 
 Handle each result:
 

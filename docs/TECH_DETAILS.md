@@ -215,7 +215,7 @@ pi.sendMessage(reminder, { deliverAs: "steer" })
   - 出错时同时给用户弹 `Collaborator error: 原文` 的红字提示。
 - 其他结果不带 `state`，各自的文字已经说明了协作者的状态：
   - 超时：协作者还在跑，不提前返回 report。Lead 继续活跃，可以再 inspect / send / wait。
-  - `interrupted`：用户打断，协作者还在跑，见 7.5。
+  - `interruptedByUser`：用户打断，协作者还在跑，见 7.5。
   - `aborted`：Lead 被中断，协作者也跟着被中断。
   - `reportQueued`：协作者在 wait 开始前已经停下，结果已经作为消息排队投递。
 - 不设 `cancelled`。以后如果加了 Lead 主动取消协作者的工具，再定它的结果。
@@ -230,7 +230,7 @@ pi.sendMessage(reminder, { deliverAs: "steer" })
 
 ### 7.5 被 steer 打断
 
-- 用户在 wait 期间发消息 → 用 `interrupted` 结果结束等待，`isError: true`。
+- 用户在 wait 期间发消息 → 用 `interruptedByUser` 结果结束等待，`isError: true`。
 - 用户消息作为单独消息出现在同一请求里，不塞进 tool result。
 - 只对 `streamingBehavior === "steer"` 打断，`followUp` 不打断。
 - 实现方式：`input` 事件后等一个 tick，再检查 `ctx.hasPendingMessages()`；图片处理可能延迟入队，所以用短间隔重试。

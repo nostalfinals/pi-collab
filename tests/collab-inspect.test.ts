@@ -21,7 +21,6 @@ interface FakeSession {
   };
 }
 
-// Reaches into CollabMode's private fields so tests can supply a fake collaborator session.
 interface CollabInternals {
   collaboratorSession: Promise<FakeSession> | undefined;
   getOrCreateCollaborator: () => Promise<FakeSession>;
@@ -169,19 +168,16 @@ describe("inspectCollaborator", () => {
 
   it("works while collab mode is paused", async () => {
     const collab = createCollab([stateEntry("paused")], fakeSession({ messages: [assistant(textBlock("hi"))] }));
-
     expect((await collab.inspectCollaborator(5)).activities).toHaveLength(1);
   });
 
   it("throws when collab mode was never enabled", async () => {
     const collab = createCollab([], fakeSession());
-
     await expect(collab.inspectCollaborator(5)).rejects.toThrow("Collab mode is not active");
   });
 
   it("throws when no collaborator exists on the branch", async () => {
     const collab = createCollab([stateEntry("active")]);
-
     await expect(collab.inspectCollaborator(5)).rejects.toThrow("No collaborator session exists yet");
   });
 
