@@ -244,6 +244,10 @@ export class CollabMode {
   }
 
   async waitForCollaborator(timeout: number): Promise<CollabWaitResult> {
+    if (this.state?.mode !== "active") {
+      throw new Error(text.model.collabInactive);
+    }
+
     if (!this.collaboratorSession) {
       throw new Error(text.model.noCollaborator);
     }
@@ -363,8 +367,16 @@ export class CollabMode {
         ...base,
         extensions: base.extensions.filter((extension) => extension.resolvedPath !== this.extensionPath),
       }),
-      appendSystemPromptOverride: (base) =>
-        text.model.collaboratorSystemPrompt ? [...base, text.model.collaboratorSystemPrompt] : base,
+      extensionFactories: [
+        {
+          name: "collab-role",
+          factory: (collaboratorPi) => {
+            collaboratorPi.on("before_agent_start", (event) => {
+              event.systemPromptOptions.sections.collaborator_role = text.prompt.collaboratorSection;
+            });
+          },
+        },
+      ],
     });
 
     await resourceLoader.reload();

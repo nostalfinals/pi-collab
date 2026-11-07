@@ -25,8 +25,12 @@ export const text = {
     collabSendToolLabel: "Collab send",
     collabWaitToolLabel: "Collab wait",
   },
+  prompt: {
+    leadSection:
+      "Tools whose names start with `collab_` belong to collab mode. Only use them after the user has turned on collab mode. You will receive a notification when collab mode is turned on.",
+    collaboratorSection: "TODO - To be filled",
+  },
   model: {
-    collaboratorSystemPrompt: "TODO - To be filled",
     sendDescription: "Send a message or steer the collaborator.",
     waitDescription: "Wait for the collaborator to finish. The tool result contains its final message.",
     sendResult: "Message sent.",
@@ -59,7 +63,7 @@ export const text = {
         ? `<collaborator_report state="${outcome.state}">\n${body}\n</collaborator_report>${truncated}`
         : `<collaborator_report state="${outcome.state}" />`;
     },
-    collabInactive: "Collab mode is not active. Ask the user to enable it with /collab before sending messages.",
+    collabInactive: "Collab mode is not active. Ask the user to enable it with /collab before using collab tools.",
     noCollaborator: "No collaborator session exists. Use collab_send before calling collab_wait.",
     collaboratorNotRunning: "The collaborator is not running; there is nothing to wait for.",
     waitAlreadyPending: "A collab_wait call is already in progress. Only one wait can be active at a time.",

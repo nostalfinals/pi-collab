@@ -15,6 +15,11 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => collabCommand(collab, ctx),
   });
 
+  // Always present and state-neutral, so turning collab mode on or off never changes the system prompt.
+  pi.on("before_agent_start", (event) => {
+    event.systemPromptOptions.sections.collab_reminder = text.prompt.leadSection;
+  });
+
   pi.on("session_start", async (event, ctx) => {
     collab.extensionContext = ctx;
     if (event.reason === "fork" && event.previousSessionFile) {
