@@ -155,7 +155,13 @@ export class CollabMode {
     this.sendStatusMessage();
   }
 
-  disable(): void {
+  // Pausing requires an idle collaborator. Returns false without changing anything while it runs.
+  async disable(): Promise<boolean> {
+    const session = await this.collaboratorSession?.catch(() => undefined);
+    if (session && !session.isIdle) {
+      return false;
+    }
+
     const current = this.state;
     if (current?.mode === "active") {
       const state: CollabState = { ...current, mode: "paused" };
@@ -163,6 +169,7 @@ export class CollabMode {
       this.cachedState = state;
       this.sendStatusMessage();
     }
+    return true;
   }
 
   // The last status message, if the latest compaction summarized it away. Only entries

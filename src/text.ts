@@ -7,6 +7,7 @@ export const text = {
     terminalRequired: "/collab requires the terminal interface.",
     configurationSaved: "Collaborator configuration saved.",
     modeDisabled: "Collaborator mode disabled.",
+    disableWhileRunning: "The collaborator is still running. Wait for it to finish before disabling collab mode.",
     configurationUpdated: "Collaborator configuration updated.",
     collaboratorError: (error: string) => `Collaborator error: ${error}`,
     configurationFailed: (error: string) => `Failed to apply collaborator configuration: ${error}`,
@@ -29,8 +30,9 @@ export const text = {
     leadSection:
       "Tools whose names start with `collab_` belong to collab mode. Only use them after the user has turned on collab mode. You will receive a notification when collab mode is turned on.",
     collaboratorSection: "TODO - To be filled",
-    collabEnabled: "TODO - To be filled",
-    collabDisabled: "TODO - To be filled",
+    collabEnabled: "Collab mode is now enabled. Read the `collab` skill for the collaboration guidelines.",
+    collabDisabled:
+      "Collab mode is now disabled. You can still perform read-only operations, such as inspecting the collaborator's output, but you cannot send it messages until the user enables collab mode again.",
   },
   model: {
     sendDescription: "Send a message or steer the collaborator.",

@@ -46,8 +46,11 @@ export async function collabCommand(collab: CollabMode, ctx: ExtensionCommandCon
     );
 
     if (action === "disable") {
-      collab.disable();
-      ctx.ui.notify(text.ui.modeDisabled, "info");
+      if (await collab.disable()) {
+        ctx.ui.notify(text.ui.modeDisabled, "info");
+      } else {
+        ctx.ui.notify(text.ui.disableWhileRunning, "warning");
+      }
       return;
     }
 
