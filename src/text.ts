@@ -11,6 +11,8 @@ export const text = {
     configurationUpdated: "Collaborator configuration updated.",
     collaboratorError: (error: string) => `Collaborator error: ${error}`,
     configurationFailed: (error: string) => `Failed to apply collaborator configuration: ${error}`,
+    leadStoppedWhileCollaboratorRuns:
+      "The lead stopped because of an error, but the collaborator is still running. Its report will be sent to the lead when it finishes, or you can stop the collaborator in /collab.",
     noModelsAvailable: "No models available. Configure a provider with /login first.",
     modelSelectorTitle: "Which model do you want to use for the collaborator?",
     overviewTitle: (model: string, effort: string) => `Collaborator · ${model} · ${effort}`,
@@ -33,6 +35,8 @@ export const text = {
     leadSection:
       "Tools whose names start with `collab_` belong to collab mode. Only use them after the user has enabled collab mode. You will receive a notification when collab mode is enabled.",
     collabEnabled: "Collab mode is now enabled. Read the `collab-mode` skill for the collaboration guidelines.",
+    collaboratorStillRunning:
+      "The collaborator is still running, so do not end your turn yet. Call `collab_wait` to wait for its report, or `collab_interrupt` if it is stuck.",
     collabDisabled:
       "Collab mode is now disabled. You can still perform read-only operations, such as inspecting the collaborator's output, but you cannot send it messages until the user enables collab mode again.",
   },

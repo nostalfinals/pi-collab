@@ -73,6 +73,13 @@ export default function (pi: ExtensionAPI) {
     );
   });
 
+  pi.on("agent_before_settle", async (event) => {
+    const reminder = await collab.beforeLeadSettle(event.outcome);
+    if (reminder) {
+      return { entries: [...event.entries, reminder], continue: true };
+    }
+  });
+
   pi.on("message_start", (event) => {
     if (event.message.role === "custom") {
       collab.handleLeadMessageStart(event.message.customType);

@@ -6,8 +6,10 @@ import {
   DefaultResourceLoader,
   getAgentDir,
   SessionManager,
+  type AgentActivityOutcome,
   type AgentSession,
   type CustomMessageEntry,
+  type CustomMessageEntryDraft,
   type ExtensionAPI,
   type ExtensionContext,
   type SessionEntry,
@@ -72,6 +74,7 @@ const stateType = "collab-mode-state";
 const anchorType = "collab-anchor";
 const reportMessageType = "collab-report";
 const statusMessageType = "collab-status";
+const nudgeMessageType = "collab-nudge";
 const collabToolNames = ["collab_send", "collab_wait", "collab_inspect", "collab_interrupt"];
 const maxToolArgumentsLength = 500;
 
@@ -141,6 +144,30 @@ export class CollabMode {
 
   get hasPendingWait(): boolean {
     return this.reportDelivery !== undefined;
+  }
+
+  async beforeLeadSettle(outcome: AgentActivityOutcome): Promise<CustomMessageEntryDraft | undefined> {
+    const session = await this.collaboratorSession?.catch(() => undefined);
+
+    if (!session || session.isIdle) {
+      return undefined;
+    }
+
+    if (outcome === "error") {
+      this.leadContext?.ui.notify(text.ui.leadStoppedWhileCollaboratorRuns, "warning");
+      return undefined;
+    }
+
+    if (outcome !== "completed") {
+      return undefined;
+    }
+
+    return {
+      type: "custom_message",
+      customType: nudgeMessageType,
+      content: text.prompt.reminder(text.prompt.collaboratorStillRunning),
+      display: false,
+    };
   }
 
   get state(): CollabState | undefined {
