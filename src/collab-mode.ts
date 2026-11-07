@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readdir } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import {
@@ -414,6 +414,7 @@ export class CollabMode {
     const ctx = this.context;
     const model = this.findModel(config);
     const agentDir = getAgentDir();
+    const role = (await readFile(join(dirname(this.extensionPath), "../prompts/collaborator_role.md"), "utf8")).trim();
     const resourceLoader = new DefaultResourceLoader({
       cwd: ctx.cwd,
       agentDir,
@@ -426,7 +427,7 @@ export class CollabMode {
           name: "collab-role",
           factory: (collaboratorPi) => {
             collaboratorPi.on("before_agent_start", (event) => {
-              event.systemPromptOptions.sections.collaborator_role = text.prompt.collaboratorSection;
+              event.systemPromptOptions.sections.collaborator_role = role;
             });
           },
         },
