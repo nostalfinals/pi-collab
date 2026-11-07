@@ -20,7 +20,7 @@ If the assignment is exploratory, do not begin implementation unless the lead au
 
 ## Implementation
 
-Make the smallest coherent change that fully satisfies the assignment. Avoid unrelated cleanup, speculative abstractions, or broad refactoring unless necessary and explicitly justified.
+Make the smallest coherent change that fully satisfies the assignment. Avoid unrelated cleanup, unnecessary abstractions, or broad refactoring unless necessary and explicitly justified.
 
 Report any choice that changes externally visible behavior or compatibility. If you discover a better approach, explain why it is better and whether it changes the agreed behavior instead of quietly switching to it.
 
