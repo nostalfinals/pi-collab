@@ -10,6 +10,18 @@ const waitParameters = Type.Object({
   timeout: Type.Number({ minimum: 0 }),
 });
 
+const inspectParameters = Type.Object({
+  count: Type.Optional(Type.Integer({ minimum: 1 })),
+});
+
+// Keeps the full text in a temp file so a truncated tool result can point to it.
+async function writeFullOutput(content: string, name: string): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "pi-collab-"));
+  const fullOutputPath = join(directory, name);
+  await writeFile(fullOutputPath, content, "utf8");
+  return fullOutputPath;
+}
+
 interface WaitDetails {
   truncation?: TruncationResult;
   fullOutputPath?: string;
@@ -82,9 +94,7 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
             };
           }
 
-          const directory = await mkdtemp(join(tmpdir(), "pi-collab-"));
-          const fullOutputPath = join(directory, "report.txt");
-          await writeFile(fullOutputPath, outcome.report!, "utf8");
+          const fullOutputPath = await writeFullOutput(outcome.report!, "report.txt");
 
           return {
             content: [
@@ -98,6 +108,29 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
           };
         }
       }
+    },
+  });
+
+  pi.registerTool<typeof inspectParameters, WaitDetails>({
+    name: "collab_inspect",
+    label: text.ui.collabInspectToolLabel,
+    description: text.model.inspectDescription,
+    parameters: inspectParameters,
+
+    execute: async (_toolCallId, params) => {
+      const inspection = await collab.inspectCollaborator(params.count ?? 5);
+      const output = text.model.collaboratorActivity(inspection);
+      const truncation = truncateTail(output);
+
+      if (!truncation.truncated) {
+        return { content: [{ type: "text", text: output }], details: {} };
+      }
+
+      const fullOutputPath = await writeFullOutput(output, "activity.txt");
+      return {
+        content: [{ type: "text", text: truncation.content + text.model.truncatedOutput(fullOutputPath) }],
+        details: { truncation, fullOutputPath },
+      };
     },
   });
 }

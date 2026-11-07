@@ -35,6 +35,18 @@ export interface CollaboratorOutcome {
   error?: string;
 }
 
+// "generating": part of the response still being streamed. "running": a tool call being executed.
+export type CollaboratorActivityStatus = "generating" | "running" | undefined;
+
+export type CollaboratorActivity =
+  | { type: "text"; text: string; status: CollaboratorActivityStatus }
+  | { type: "toolCall"; name: string; arguments: string; truncated: boolean; status: CollaboratorActivityStatus };
+
+export interface CollaboratorInspection {
+  status: "running" | "idle";
+  activities: CollaboratorActivity[];
+}
+
 export type CollabWaitResult =
   | ({ type: "settled" } & CollaboratorOutcome)
   | { type: "reportQueued" }
@@ -59,7 +71,8 @@ const stateType = "collab-mode-state";
 const anchorType = "collab-anchor";
 const reportMessageType = "collab-report";
 const statusMessageType = "collab-status";
-const collabToolNames = ["collab_send", "collab_wait"];
+const collabToolNames = ["collab_send", "collab_wait", "collab_inspect"];
+const maxToolArgumentsLength = 500;
 
 async function findCollaboratorFile(sessionDir: string, leadSessionId: string): Promise<string | undefined> {
   const collabDir = join(sessionDir, "collab");
@@ -337,6 +350,48 @@ export class CollabMode {
       }
       clearTimeout(timer);
     }
+  }
+
+  async inspectCollaborator(count: number): Promise<CollaboratorInspection> {
+    const state = this.state;
+    const hasAnchor = this.context.sessionManager
+      .getBranch()
+      .some((entry) => entry.type === "custom" && entry.customType === anchorType);
+
+    if (!state) {
+      throw new Error(text.model.collabInactive);
+    }
+
+    if (!this.collaboratorSession && !hasAnchor) {
+      throw new Error(text.model.noCollaborator);
+    }
+
+    const session = await this.getOrCreateCollaborator(state.config);
+    const { messages, streamingMessage, pendingToolCalls } = session.state;
+    const activities: CollaboratorActivity[] = [];
+
+    for (const message of streamingMessage ? [...messages, streamingMessage] : messages) {
+      if (message.role !== "assistant") {
+        continue;
+      }
+      const generating = message === streamingMessage;
+      for (const block of message.content) {
+        if (block.type === "text" && block.text.trim()) {
+          activities.push({ type: "text", text: block.text, status: generating ? "generating" : undefined });
+        } else if (block.type === "toolCall") {
+          const json = JSON.stringify(block.arguments);
+          activities.push({
+            type: "toolCall",
+            name: block.name,
+            arguments: json.slice(0, maxToolArgumentsLength),
+            truncated: json.length > maxToolArgumentsLength,
+            status: generating ? "generating" : pendingToolCalls.has(block.id) ? "running" : undefined,
+          });
+        }
+      }
+    }
+
+    return { status: session.isIdle ? "idle" : "running", activities: activities.slice(-count) };
   }
 
   // Input fires before steering is queued. Wait for the queue so the interrupted

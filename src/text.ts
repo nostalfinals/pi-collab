@@ -1,5 +1,5 @@
 import type { StopReason } from "@earendil-works/pi-ai";
-import type { CollaboratorOutcome } from "./collab-mode.ts";
+import type { CollaboratorInspection, CollaboratorOutcome } from "./collab-mode.ts";
 
 export const text = {
   ui: {
@@ -25,6 +25,7 @@ export const text = {
     backActionLabel: "back",
     collabSendToolLabel: "Collab send",
     collabWaitToolLabel: "Collab wait",
+    collabInspectToolLabel: "Collab inspect",
   },
   prompt: {
     reminder: (body: string) => `<collab_reminder>\n${body}\n</collab_reminder>`,
@@ -39,6 +40,8 @@ export const text = {
       "Send a message to the collaborator. If the collaborator is idle, the message starts a new run. If it is running, the message is added to the current run. Returns immediately; the collaborator works in parallel until the run ends. The collaborator does not see your conversation with the user, but it keeps its own context across runs.",
     waitDescription:
       "Wait up to `timeout` seconds for the collaborator's run to end and return its report. If the wait times out, the collaborator keeps running. If the run already ended, its report arrives as a message instead. A user message interrupts the wait.",
+    inspectDescription:
+      "Show whether the collaborator is running and its most recent activity: its text messages and tool calls, oldest first. `count` sets how many to return (default 5). Thinking and tool results are not included, and long tool arguments are cut short. Works whether the collaborator is running or idle, and while collab mode is disabled.",
     sendResult: "Message sent.",
     waitTimeoutResult: (timeout: number) => `The collaborator did not finish within ${timeout} seconds.`,
     waitReportQueuedResult:
@@ -62,6 +65,18 @@ export const text = {
           return `The collaborator stopped unexpectedly (${stopReason}).${detail}`;
       }
     },
+    truncatedOutput: (fullOutputPath: string) => `\n\n[Output truncated. Full output: ${fullOutputPath}]`,
+    collaboratorActivity: (inspection: CollaboratorInspection): string => {
+      const entries = inspection.activities.map((activity) => {
+        const truncated = activity.type === "toolCall" && activity.truncated;
+        const flags = [activity.status, truncated && "truncated"].filter(Boolean);
+        const suffix = flags.length > 0 ? ` (${flags.join(", ")})` : "";
+        return activity.type === "text"
+          ? `[text]${suffix}\n${activity.text}`
+          : `[tool_call ${activity.name}]${suffix}\n${activity.arguments}`;
+      });
+      return [`status: ${inspection.status}`, ...(entries.length > 0 ? entries : ["No activity yet."])].join("\n\n");
+    },
     collaboratorOutcome: (outcome: CollaboratorOutcome, fullOutputPath?: string) => {
       const body = outcome.error ?? outcome.report;
       const truncated = fullOutputPath ? `\n\n[Report truncated. Full report: ${fullOutputPath}]` : "";
@@ -70,7 +85,7 @@ export const text = {
         : `<collaborator_report state="${outcome.state}" />`;
     },
     collabInactive: "Collab mode is not active. Ask the user to enable it with /collab before using collab tools.",
-    noCollaborator: "No collaborator session exists. Use collab_send before calling collab_wait.",
+    noCollaborator: "No collaborator session exists yet. Use collab_send to give it an assignment first.",
     collaboratorNotRunning: "The collaborator is not running; there is nothing to wait for.",
     waitAlreadyPending: "A collab_wait call is already in progress. Only one wait can be active at a time.",
   },
