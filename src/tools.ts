@@ -6,8 +6,11 @@ import { Type } from "typebox";
 import type { CollabMode } from "./collab-mode.ts";
 import { text } from "./text.ts";
 
+const defaultWaitTimeout = 300;
+const maxWaitTimeout = 1200;
+
 const waitParameters = Type.Object({
-  timeout: Type.Number({ minimum: 0 }),
+  timeout: Type.Optional(Type.Number({ minimum: 0, maximum: maxWaitTimeout })),
 });
 
 const inspectParameters = Type.Object({
@@ -51,11 +54,12 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
     parameters: waitParameters,
 
     execute: async (_toolCallId, params) => {
-      const result = await collab.waitForCollaborator(params.timeout);
+      const timeout = params.timeout ?? defaultWaitTimeout;
+      const result = await collab.waitForCollaborator(timeout);
       switch (result.type) {
         case "timeout":
           return {
-            content: [{ type: "text", text: text.model.waitTimeoutResult(params.timeout) }],
+            content: [{ type: "text", text: text.model.waitTimeoutResult(timeout) }],
             details: {},
             isError: true,
           };
