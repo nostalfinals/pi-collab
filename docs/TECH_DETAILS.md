@@ -32,7 +32,7 @@
 - 两个独立的 AgentSession 在同一个 pi 进程里并行，各自有完整历史。
 - 不启子进程，不走 RPC。
 - 一个 Lead 只对应一个 Collaborator，不是 subagent，不支持多个。
-- Lead 和 Collaborator 之间只有两条通道：
+- Lead 和 Collaborator 之间只有两条消息通道：
   - Lead → Collaborator：`send` 工具。
   - Collaborator → Lead：每轮运行结束时的最终 assistant text，作为 report 返回。
 - 两者的运行状态绑定：整体任务只有在两个 agent 都停下时才算结束。
@@ -40,7 +40,7 @@
 ## 3. 会话与文件
 
 - Collaborator 会话按需创建：第一次真正发消息时才建文件。
-- 路径：`sessions/<编码后的 cwd>/collab/<时间戳>_<leadSessionId>.jsonl`，会话 ID 和 Lead 相同；查找时按 `_<leadSessionId>.jsonl` 结尾匹配。
+- 路径：`sessions/<编码后的 cwd>/collab/<时间戳>_<leadSessionId>.jsonl`，会话 ID 和 Lead 相同；查找时匹配 `_<leadSessionId>.jsonl` 结尾，或兼容无时间戳前缀的 `<leadSessionId>.jsonl`。
   - pi 的会话发现只扫 `sessions/<cwd>/*.jsonl` 两层，嵌套的 `collab/` 不会被 `/resume` 扫到。
   - Lead 的 session id 可以从 `ctx.sessionManager.getSessionId()` 获取。
 - `/fork`、`/clone` 都走 `session_before_fork`，`position` 分别是 `"before"` 和 `"at"`。
@@ -49,7 +49,7 @@
   - 副本的 leaf 不在复制时移动，等下次创建协作者会话时按锚点定位（见第 9 节）。
 - Collaborator session 不加载 PiCollab 扩展本身，避免递归。
   - 用 `DefaultResourceLoader` 的 `extensionsOverride`，按 `resolvedPath` 只过滤掉本扩展；用户的其他扩展照常加载。
-  - 工具用 Lead 当前启用的工具，去掉 `collab_send` / `collab_wait` / `collab_inspect`。
+  - 工具用 Lead 当前启用的工具，去掉 `collab_send` / `collab_wait` / `collab_inspect` / `collab_interrupt`。
 - Collaborator 的角色提示放在 `prompts/collaborator_role.md`，见 5.5。
 - Collaborator 的 cwd 和 Lead 相同。
 
@@ -143,7 +143,7 @@ handoff 和 steer 是同一个 `send` 工具在不同运行状态下的行为名
 
 ### 6.2 Lead 工具
 
-工具名是 `collab_send`、`collab_wait`、`collab_inspect`，下文简称 `send` / `wait` / `inspect`。
+工具名是 `collab_send`、`collab_wait`、`collab_inspect`、`collab_interrupt`，下文简称 `send` / `wait` / `inspect` / `interrupt`。
 
 - `send`：Lead 给 Collaborator 发消息的唯一工具，立即返回，不等待完成。
   - 协作者空闲 → handoff，开新一轮；正在跑 → steer 当前运行。
@@ -151,7 +151,7 @@ handoff 和 steer 是同一个 `send` 工具在不同运行状态下的行为名
   - 只在 `active` 时可用。
   - 创建协作者会话失败：给用户弹红字提示，工具报错。
   - 这一轮没能启动（比如模型或认证有问题）：按 `error` 结果投递，见 7.3。
-- `wait`：阻塞等待，见第 7 节。
+- `wait`：阻塞等待，见第 7 节。`timeout` 可不填，默认 300 秒，最大 1200 秒；skill 里只写"可能要几分钟"，不给具体数值。
 - `inspect`：只读，查看协作者现在是否在跑，以及最近的活动。
   - 参数只有可选的 `count`，默认 5。
   - 一条活动是协作者回复里的一段文字，或者一个工具调用；不含思考、工具结果、Lead 发给它的消息、只有空白的文字。
@@ -161,7 +161,10 @@ handoff 和 steer 是同一个 `send` 工具在不同运行状态下的行为名
   - 整体输出按 50k 截断，完整内容写到临时文件。
   - `paused` 时也能用。当前分支没有锚点、内存里也没有协作者会话时，报"还没有协作者"，不创建空会话。有锚点时会从文件加载协作者会话，不发请求。
   - 暂不做分页、区间、过滤，也不做显示工具结果的参数（用途不明确，误用会把大量内容塞进上下文）。
-- 是否加 Lead 主动取消协作者的工具，待定。
+- `interrupt`：停止协作者当前运行的控制工具。
+  - 先 `clearQueue()` 丢弃排队消息，再 `abort()` 当前运行。
+  - 保留协作者 session 和上下文；本次运行不产生 report，之后可以用 `send` 开始新一轮。
+  - 只在 `active` 且协作者正在运行时可用；协作者空闲或模式未开启时报错。
 
 ### 6.3 Collaborator 的 report
 
@@ -188,23 +191,23 @@ waiting === false → pi.sendMessage(reportMessage, { triggerTurn: true })
 
 - Lead 主动调用 `wait`，工具阻塞 Lead 的 agent loop。
 - 不设计"Lead 结束、系统替它等"的第二种模式。
-- Lead 没 wait 就结束，视为协议违规。
+- 正常完成路径上，如果协作者仍在运行，`agent_before_settle` 会用 nudge 拦截 Lead 结束；Lead 没 wait 就结束，仍视为协议违规。
 
-### 7.2 违规兜底（未实现）
+### 7.2 违规兜底
 
-`agent_before_settle` 里：
+`agent_before_settle` 里调用 `beforeLeadSettle`。满足条件时返回一个隐藏的 `custom_message` 草稿（`customType` 为 `collab-nudge`），`index.ts` 把它追加到 `event.entries` 并返回 `continue: true`：
 
 ```
+if collaborator missing or idle: return
+if outcome === "error": 提示用户协作者仍在运行; return
 if outcome !== "completed": return
-if collaborator idle or mode not active: return
-if nudge 次数 >= 上限: return
-pi.sendMessage(reminder, { deliverAs: "steer" })
+return hidden custom_message draft  // 不设次数上限
 ```
 
-- 队列里有消息，边界会自动 continue。
-- 挂起只持续到 reminder 入队，几毫秒，不是长挂起。
-- 下一轮 Lead 调 `wait`，真正阻塞在工具里。
-- nudge 建议让 Lead 调 `wait`。
+- 只有 Lead 正常完成（`outcome === "completed"`）才 nudge；Lead 因错误结束时不继续，只给用户弹提示。
+- 不设 nudge 次数上限：协作者在跑时 Lead 就不能停。
+- nudge 内容提醒 Lead 调用 `wait`；若协作者卡住则调用 `interrupt`。
+- 这不是长挂起，只持续到隐藏提醒进入下一次请求，Lead 随后应在工具里真正调用 `wait`。
 
 ### 7.3 wait 结果
 
@@ -217,8 +220,9 @@ pi.sendMessage(reminder, { deliverAs: "steer" })
   - 超时：协作者还在跑，不提前返回 report。Lead 继续活跃，可以再 inspect / send / wait。
   - `interruptedByUser`：用户打断，协作者还在跑，见 7.5。
   - `aborted`：Lead 被中断，协作者也跟着被中断。
+  - `collaboratorInterrupted`：wait 期间协作者被 `interrupt` 停下（包括和 wait 并行调用）；没有 report。Lead 被中止或切分支时仍是 `aborted`。
   - `reportQueued`：协作者在 wait 开始前已经停下，结果已经作为消息排队投递。
-- 不设 `cancelled`。以后如果加了 Lead 主动取消协作者的工具，再定它的结果。
+- 不设 `cancelled`。协作者被中断时使用 `collaboratorInterrupted`。
 - report 如果太长，按类似 bash 的 50k 上限截断，完整内容写到临时文件，并在结果里给出路径。
 
 ### 7.4 等待状态机
@@ -275,13 +279,15 @@ pi.sendMessage(reminder, { deliverAs: "steer" })
 - 切分支时（`session_tree`）：
   1. 先取消正在跑的协作者，dispose 它的 session，清掉分支相关的内存状态。
   2. 下次需要协作者时重新打开文件，从当前 leaf 往上找最近的锚点条目。
-  3. 到协作者会话里，保留那个 user message 开始的整个 turn（到下一个 user message 之前，取最后一个 assistant message），把 leaf 移过去。
+  3. 到协作者会话里，从锚点 entry 往后找下一个 user message：
+     - 没有下一个 user：leaf 移到文件最后一个 entry；
+     - 有下一个 user：在它之前向前找最近的 assistant message，找到就把 leaf 移到该 assistant；找不到则移到下一个 user 之前的 entry，再退回锚点 entry。
   4. 目标分支没有锚点 → 协作者 leaf 回根。模式状态另由分支上的状态条目决定，和锚点无关。
 - 协作者会话因此变成一棵树；`branch()` 不删条目，forward 切换也能恢复。
 - 切分支只同步上下文，不回滚文件改动。
 - fork / clone：复制协作者文件，再用同样的锚点逻辑把副本 leaf 移到对应位置。
 - 条目 ID 原样保留，所以 Lead 里复制的锚点仍然有效。
-- "turn 没跑完时保留到哪里"待定：保留到发送点，还是保留到最后一个已完成的 assistant 消息。
+- 上述算法在有下一个 user 时取最近的 assistant message，但不检查它是否已经完成；"未完成 turn"是否必须保留到已完成 assistant 的语义仍待定。
 
 ## 10. UI 与命令
 
@@ -408,20 +414,18 @@ agent_end（TUI 清掉转圈）
 
 ## 12. 待定问题
 
-- Collaborator 是否加载项目 MCP/skills/AGENTS.md、权限/审批。
-- 模型与思考级别的初始默认值；更换模型后思考级别的默认选项。
-- `wait` 超时的硬上限；skill 里要不要给超时参考值（要和硬上限对上）。
-- nudge 次数上限和最后兜底行为。
+- 协作者的资源加载：当前通过 `DefaultResourceLoader` 使用 Lead 的 cwd/agentDir 默认加载项目上下文、skills、prompts 和扩展，仅过滤本扩展；MCP 与权限/审批仍待定。
+- 模型与思考级别的默认策略（`src/command.ts`）：当前无已保存配置时，模型选择列表的光标默认停在 Lead 当前模型上，模型仍由用户选；思考级别取已保存配置、Lead 当前级别或 `medium`，再通过 `clampThinkingLevel` 限制到模型支持范围；更换模型后沿用当前思考级别并 clamp。这是否作为最终产品默认仍待确认。
 - `inspect` 以后是否需要分页、区间、过滤。
 - 协作者会话文件缺失/损坏时 Lead 看到什么。
-- 分支同步里"未完成 turn"的精确定义。
+- 分支同步里"未完成 turn"的完成性语义：当前 `findCollaboratorLeaf` 取下一个 user 之前最近的 assistant，找不到则取下一个 user 之前的 entry（没有下一个 user 时取最后 entry），不检查 assistant 是否已完成；是否要求"已完成"仍待定。
 - 协作者自己的压缩：Lead 发过去的任务上下文被压掉后怎么办。
 - 状态显示、成本显示、用户如何查看协作者输出。
 - 怎么验证成本真的降了、质量没掉。
 
 ## 13. MVP 建议
 
-按依赖顺序分三层，先跑通再补。目前第一层、第三层已完成；第二层除 nudge 兜底外已完成。
+按依赖顺序分三层，先跑通再补。目前三层列出的功能均已完成。
 
 ### 第一层：协作闭环
 
@@ -452,4 +456,4 @@ agent_end（TUI 清掉转圈）
 - 一次只允许一个 wait。
 - Lead 通过 `send` 发起 handoff 或 steer；协作者没有向 Lead 发消息的工具，只以每轮最终 assistant text 返回 report。
 - 取消保持 `active`；暂停要求协作者空闲。
-- 两个 agent 都结束，整体任务才算结束（由 wait 和 nudge 保证；nudge 未实现）。
+- 两个 agent 都结束，整体任务才算结束（由 wait 和 nudge 保证）。
