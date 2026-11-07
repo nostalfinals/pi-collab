@@ -210,7 +210,7 @@ export class CollabMode {
     }
     this.pi.sendMessage({
       customType: statusMessageType,
-      content: mode === "active" ? text.prompt.collabEnabled : text.prompt.collabDisabled,
+      content: text.prompt.reminder(mode === "active" ? text.prompt.collabEnabled : text.prompt.collabDisabled),
       display: false,
     });
   }

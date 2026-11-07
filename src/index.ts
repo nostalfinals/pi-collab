@@ -1,3 +1,4 @@
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { collabCommand } from "./command.ts";
@@ -9,6 +10,10 @@ export default function (pi: ExtensionAPI) {
   const collab = new CollabMode(pi, fileURLToPath(import.meta.url));
 
   registerCollabTools(pi, collab);
+
+  pi.on("resources_discover", () => ({
+    skillPaths: [join(dirname(fileURLToPath(import.meta.url)), "../skills/collab-mode")],
+  }));
 
   pi.registerCommand("collab", {
     description: text.ui.collabCommandDescription,

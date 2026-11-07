@@ -27,6 +27,7 @@ export const text = {
     collabWaitToolLabel: "Collab wait",
   },
   prompt: {
+    reminder: (body: string) => `<collab_reminder>\n${body}\n</collab_reminder>`,
     leadSection:
       "Tools whose names start with `collab_` belong to collab mode. Only use them after the user has enabled collab mode. You will receive a notification when collab mode is enabled.",
     collaboratorSection: "TODO - To be filled",
@@ -35,8 +36,10 @@ export const text = {
       "Collab mode is now disabled. You can still perform read-only operations, such as inspecting the collaborator's output, but you cannot send it messages until the user enables collab mode again.",
   },
   model: {
-    sendDescription: "Send a message or steer the collaborator.",
-    waitDescription: "Wait for the collaborator to finish. The tool result contains its final message.",
+    sendDescription:
+      "Send a message to the collaborator. If the collaborator is idle, the message starts a new run. If it is running, the message is added to the current run. Returns immediately; the collaborator works in parallel until the run ends. The collaborator does not see your conversation with the user, but it keeps its own context across runs.",
+    waitDescription:
+      "Wait up to `timeout` seconds for the collaborator's run to end and return its report. If the wait times out, the collaborator keeps running. If the run already ended, its report arrives as a message instead. A user message interrupts the wait.",
     sendResult: "Message sent.",
     waitTimeoutResult: (timeout: number) => `The collaborator did not finish within ${timeout} seconds.`,
     waitReportQueuedResult:
