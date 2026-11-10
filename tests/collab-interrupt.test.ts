@@ -39,9 +39,9 @@ vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
   SessionManager: { create: () => ({ resetLeaf() {} }) },
 }));
 
-interface CollabInternals {
+type CollabInternals = {
   getOrCreateCollaborator: (config: unknown) => Promise<FakeSession>;
-}
+};
 
 function stateEntry(mode: "active" | "paused"): SessionEntry {
   return {

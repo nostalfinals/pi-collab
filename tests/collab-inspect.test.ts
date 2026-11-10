@@ -11,19 +11,19 @@ import type {
 import { CollabMode, type CollaboratorActivity } from "../src/collab-mode.ts";
 import { registerCollabTools } from "../src/tools.ts";
 
-interface FakeSession {
+type FakeSession = {
   isIdle: boolean;
   state: {
     messages: unknown[];
     streamingMessage?: unknown;
     pendingToolCalls: Set<string>;
   };
-}
+};
 
-interface CollabInternals {
+type CollabInternals = {
   collaboratorSession: Promise<FakeSession> | undefined;
   getOrCreateCollaborator: () => Promise<FakeSession>;
-}
+};
 
 function stateEntry(mode: "active" | "paused"): SessionEntry {
   return {

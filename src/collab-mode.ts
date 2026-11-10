@@ -17,20 +17,20 @@ import {
 import { text } from "./text.ts";
 import { truncateText } from "./truncation.ts";
 
-export interface CollabConfig {
+export type CollabConfig = {
   provider: string;
   modelId: string;
   thinkingLevel: ModelThinkingLevel;
-}
+};
 
-interface CollabState {
+type CollabState = {
   mode: "active" | "paused";
   config: CollabConfig;
-}
+};
 
-interface CollaboratorAnchor {
+type CollaboratorAnchor = {
   collaboratorEntryId: string;
-}
+};
 
 export type CollaboratorOutcome = {
   type: "completed" | "error";
@@ -45,10 +45,10 @@ export type CollaboratorActivity =
   | { type: "text"; text: string; status: CollaboratorActivityStatus }
   | { type: "toolCall"; name: string; arguments: string; truncated: boolean; status: CollaboratorActivityStatus };
 
-export interface CollaboratorInspection {
+export type CollaboratorInspection = {
   status: "running" | "idle";
   activities: CollaboratorActivity[];
-}
+};
 
 export type CollabWaitResult =
   | { type: "settled"; outcome: CollaboratorOutcome }
@@ -58,10 +58,10 @@ export type CollabWaitResult =
   | { type: "collaboratorInterrupted" }
   | { type: "timeout" };
 
-interface Delivery<T> {
+type Delivery<T> = {
   promise: Promise<T>;
   deliver: (value: T) => void;
-}
+};
 
 function createPendingDelivery<T>(): Delivery<T> {
   let resolve!: (value: T) => void;
