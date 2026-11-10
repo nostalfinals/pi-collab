@@ -12,7 +12,7 @@ function status(id: string): SessionEntry {
     id,
     parentId: null,
     timestamp,
-    customType: "collab-status",
+    customType: "pi-collab/status",
     content: `status ${id}`,
     display: false,
   } as SessionEntry;
@@ -124,7 +124,7 @@ describe("context handler", () => {
       summary,
       {
         role: "custom",
-        customType: "collab-status",
+        customType: "pi-collab/status",
         content: "status s1",
         display: false,
         timestamp: new Date(timestamp).getTime(),

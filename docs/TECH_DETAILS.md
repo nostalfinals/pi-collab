@@ -75,7 +75,7 @@
   - `active` → `paused`：协作者空闲时关闭。
   - `paused` → `active`：再次开启。
 - 状态消息在开启和关闭时各发一条：
-  - 用 `pi.sendMessage` 发 `collab-status` custom message，`display: false`，不触发新的一轮；Lead 在下一次请求时看到。
+  - 用 `pi.sendMessage` 发 `pi-collab/status` custom message，`display: false`，不触发新的一轮；Lead 在下一次请求时看到。
   - 内容包在 `<collab_reminder>` 里，让 Lead 分清这不是用户输入。
   - 开启："Collab mode is now enabled. Read the `collab-mode` skill for the collaboration guidelines." 第一次开和重新开用同一句。
   - 关闭：说明仍可做只读操作（如查看协作者输出），但在用户重新开启前不能给它发消息。
@@ -147,7 +147,7 @@ handoff 和 steer 是同一个 `send` 工具在不同运行状态下的行为名
 
 - `send`：Lead 给 Collaborator 发消息的唯一工具，立即返回，不等待完成。
   - 协作者空闲 → handoff，开新一轮；正在跑 → steer 当前运行。
-  - 协作者会话每写入一条 user message，就在 Lead 会话里写一条锚点 custom entry（`collab-anchor`），记录它的 entry ID。
+  - 协作者会话每写入一条 user message，就在 Lead 会话里写一条锚点 custom entry（`pi-collab/anchor`），记录它的 entry ID。
   - 只在 `active` 时可用。
   - 创建协作者会话失败：给用户弹红字提示，工具报错。
   - 这一轮没能启动（比如模型或认证有问题）：按 `error` 结果投递，见 7.3。
@@ -183,7 +183,7 @@ waiting === false → pi.sendMessage(reportMessage, { triggerTurn: true })
                     Lead 空闲时开新一轮；Lead 正在跑时以 steer 投递，并置 pendingCollaboratorSteer
 ```
 
-- 不 wait 时投递的是 `collab-report` custom message，`display: true`，内容同样是 `<collaborator_report state="...">`。
+- 不 wait 时投递的是 `pi-collab/report` custom message，`display: true`，内容同样是 `<collaborator_report state="...">`。
 
 ## 7. wait 与生命周期
 
@@ -195,7 +195,7 @@ waiting === false → pi.sendMessage(reportMessage, { triggerTurn: true })
 
 ### 7.2 违规兜底
 
-`agent_before_settle` 里调用 `beforeLeadSettle`。满足条件时返回一个隐藏的 `custom_message` 草稿（`customType` 为 `collab-nudge`），`index.ts` 把它追加到 `event.entries` 并返回 `continue: true`：
+`agent_before_settle` 里调用 `beforeLeadSettle`。满足条件时返回一个隐藏的 `custom_message` 草稿（`customType` 为 `pi-collab/nudge`），`index.ts` 把它追加到 `event.entries` 并返回 `continue: true`：
 
 ```
 if collaborator missing or idle: return
@@ -262,7 +262,7 @@ return hidden custom_message draft  // 不设次数上限
 - 压缩可能把最后一条状态消息总结掉。处理方式是在每次请求前的 `context` 事件里把它插回去，不发新消息、不写会话：
   1. 第一条消息不是 `compactionSummary` 就不处理。
   2. 在当前分支上找最近的 `compaction` 条目。会话文件里它追加在保留窗口之后，保留窗口从它的 `firstKeptEntryId` 开始。
-  3. 从压缩条目往前找最后一条 `collab-status` 消息：
+  3. 从压缩条目往前找最后一条 `pi-collab/status` 消息：
      - 在保留窗口里：模型已经能看到，不插。
      - 在保留窗口之前：已被总结掉，原样插在 summary 后面。
      - 没找到：不插。

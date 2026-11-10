@@ -31,7 +31,7 @@ function stateEntry(mode: "active" | "paused"): SessionEntry {
     id: "state",
     parentId: null,
     timestamp: "2026-01-01T00:00:00.000Z",
-    customType: "collab-mode-state",
+    customType: "pi-collab/state",
     data: { mode, config: { provider: "p", modelId: "m", thinkingLevel: "off" } },
   } as SessionEntry;
 }
@@ -41,7 +41,7 @@ const anchorEntry = {
   id: "anchor",
   parentId: null,
   timestamp: "2026-01-01T00:00:00.000Z",
-  customType: "collab-anchor",
+  customType: "pi-collab/anchor",
   data: { collaboratorEntryId: "entry" },
 } as SessionEntry;
 

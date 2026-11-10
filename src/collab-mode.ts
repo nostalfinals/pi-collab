@@ -71,11 +71,13 @@ function createPendingDelivery<T>(): Delivery<T> {
   return { promise, deliver: resolve };
 }
 
-const stateType = "collab-mode-state";
-const anchorType = "collab-anchor";
-const reportMessageType = "collab-report";
-const statusMessageType = "collab-status";
-const nudgeMessageType = "collab-nudge";
+const stateEntryType = "pi-collab/state";
+const anchorEntryType = "pi-collab/anchor";
+
+const reportMessageType = "pi-collab/report";
+const statusMessageType = "pi-collab/status";
+const nudgeMessageType = "pi-collab/nudge";
+
 const collabToolNames = ["collab_send", "collab_wait", "collab_inspect", "collab_interrupt"];
 const maxToolArgumentsLength = 500;
 
@@ -180,7 +182,7 @@ export class CollabMode {
 
     for (let i = branch.length - 1; i >= 0; i--) {
       const entry = branch[i];
-      if (entry.type === "custom" && entry.customType === stateType) {
+      if (entry.type === "custom" && entry.customType === stateEntryType) {
         this.cachedState = entry.data as CollabState;
         return this.cachedState;
       }
@@ -192,7 +194,7 @@ export class CollabMode {
   async enable(config: CollabConfig): Promise<void> {
     await this.applyConfig(config);
     const state: CollabState = { mode: "active", config };
-    this.pi.appendEntry<CollabState>(stateType, state);
+    this.pi.appendEntry<CollabState>(stateEntryType, state);
     this.cachedState = state;
     this.sendStatusMessage();
   }
@@ -207,7 +209,7 @@ export class CollabMode {
     const current = this.state;
     if (current?.mode === "active") {
       const state: CollabState = { ...current, mode: "paused" };
-      this.pi.appendEntry<CollabState>(stateType, state);
+      this.pi.appendEntry<CollabState>(stateEntryType, state);
       this.cachedState = state;
       this.sendStatusMessage();
     }
@@ -263,7 +265,7 @@ export class CollabMode {
       mode: this.state?.mode ?? "paused",
       config,
     };
-    this.pi.appendEntry<CollabState>(stateType, state);
+    this.pi.appendEntry<CollabState>(stateEntryType, state);
     this.cachedState = state;
   }
 
@@ -385,7 +387,7 @@ export class CollabMode {
     const state = this.state;
     const hasAnchor = this.context.sessionManager
       .getBranch()
-      .some((entry) => entry.type === "custom" && entry.customType === anchorType);
+      .some((entry) => entry.type === "custom" && entry.customType === anchorEntryType);
 
     if (!state) {
       throw new Error(text.model.collabInactive);
@@ -544,7 +546,7 @@ export class CollabMode {
         });
     const anchor = [...ctx.sessionManager.getBranch()]
       .reverse()
-      .find((entry) => entry.type === "custom" && entry.customType === anchorType);
+      .find((entry) => entry.type === "custom" && entry.customType === anchorEntryType);
     const anchorData = anchor?.type === "custom" ? (anchor.data as CollaboratorAnchor | undefined) : undefined;
     const leafId = anchorData
       ? findCollaboratorLeaf(sessionManager.getEntries(), anchorData.collaboratorEntryId)
@@ -571,7 +573,7 @@ export class CollabMode {
         queueMicrotask(() => {
           const collaboratorEntryId = session.sessionManager.getLeafId();
           if (collaboratorEntryId && this.ctx) {
-            this.pi.appendEntry<CollaboratorAnchor>(anchorType, { collaboratorEntryId });
+            this.pi.appendEntry<CollaboratorAnchor>(anchorEntryType, { collaboratorEntryId });
           }
         });
       } else if (event.type === "message_end" && event.message.role === "assistant") {
