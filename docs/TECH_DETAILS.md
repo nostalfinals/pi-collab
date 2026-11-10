@@ -57,11 +57,11 @@
 
 三态：
 
-| 状态 | 协作者 | 发送 | 读取 |
-|---|---|---|---|
-| not_started | 不存在 | 禁止 | 禁止 |
-| active | 可能在跑 | 允许 | 允许 |
-| paused | 一定不在跑 | 禁止 | 允许 |
+| 状态        | 协作者     | 发送 | 读取 |
+| ----------- | ---------- | ---- | ---- |
+| not_started | 不存在     | 禁止 | 禁止 |
+| active      | 可能在跑   | 允许 | 允许 |
+| paused      | 一定不在跑 | 禁止 | 允许 |
 
 规则：
 
@@ -349,10 +349,10 @@ createAgentSession({
   agentDir,
   model,
   thinkingLevel,
-  tools,                 // Lead 的启用工具，去掉 collab_* 工具
-  resourceLoader,        // extensionsOverride 过滤本扩展 + extensionFactories 注入 collab-role
-  sessionManager,        // 已有文件用 SessionManager.open，否则 SessionManager.create(cwd, collabDir, { id })
-})
+  tools, // Lead 的启用工具，去掉 collab_* 工具
+  resourceLoader, // extensionsOverride 过滤本扩展 + extensionFactories 注入 collab-role
+  sessionManager, // 已有文件用 SessionManager.open，否则 SessionManager.create(cwd, collabDir, { id })
+});
 ```
 
 - 不传 `settingsManager`，pi 从同一个 `agentDir` 读全局设置。
