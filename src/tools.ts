@@ -1,10 +1,8 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { truncateTail, type ExtensionAPI, type TruncationResult } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { CollabMode } from "./collab-mode.ts";
+import type { CollabMode, CollaboratorOutcome } from "./collab-mode.ts";
 import { text } from "./text.ts";
+import { truncateText } from "./truncation.ts";
 
 const defaultWaitTimeout = 300;
 const maxWaitTimeout = 1200;
@@ -17,18 +15,8 @@ const inspectParameters = Type.Object({
   count: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 
-// Keeps the full text in a temp file so a truncated tool result can point to it.
-async function writeFullOutput(content: string, name: string): Promise<string> {
-  const directory = await mkdtemp(join(tmpdir(), "pi-collab-"));
-  const fullOutputPath = join(directory, name);
-  await writeFile(fullOutputPath, content, "utf8");
-  return fullOutputPath;
-}
-
-interface WaitDetails {
-  truncation?: TruncationResult;
-  fullOutputPath?: string;
-}
+type WaitDetails = { outcome?: CollaboratorOutcome };
+type InspectResult = { fullOutputPath?: string };
 
 export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void {
   pi.registerTool({
@@ -93,36 +81,23 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
           };
 
         case "settled": {
-          const outcome = { state: result.state, report: result.report, error: result.error };
-          const isError = outcome.state === "error";
-          const truncation = outcome.report === undefined ? undefined : truncateTail(outcome.report);
-
-          if (!truncation?.truncated) {
-            return {
-              content: [{ type: "text", text: text.model.collaboratorOutcome(outcome) }],
-              details: {},
-              isError,
-            };
-          }
-
-          const fullOutputPath = await writeFullOutput(outcome.report!, "report.txt");
-
+          const outcome = result.outcome;
           return {
             content: [
               {
                 type: "text",
-                text: text.model.collaboratorOutcome({ ...outcome, report: truncation.content }, fullOutputPath),
+                text: text.model.collaboratorOutcome(result.outcome),
               },
             ],
-            details: { truncation, fullOutputPath },
-            isError,
+            details: { outcome },
+            isError: outcome.type === "error",
           };
         }
       }
     },
   });
 
-  pi.registerTool<typeof inspectParameters, WaitDetails>({
+  pi.registerTool<typeof inspectParameters, InspectResult>({
     name: "collab_inspect",
     label: text.ui.collabInspectToolLabel,
     description: text.model.inspectDescription,
@@ -131,16 +106,16 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
     execute: async (_toolCallId, params) => {
       const inspection = await collab.inspectCollaborator(params.count ?? 5);
       const output = text.model.collaboratorActivity(inspection);
-      const truncation = truncateTail(output);
+      const truncation = await truncateText(output);
 
-      if (!truncation.truncated) {
+      if (!truncation) {
         return { content: [{ type: "text", text: output }], details: {} };
       }
 
-      const fullOutputPath = await writeFullOutput(output, "activity.txt");
+      const { truncated, fullOutputPath } = truncation;
       return {
-        content: [{ type: "text", text: truncation.content + text.model.truncatedOutput(fullOutputPath) }],
-        details: { truncation, fullOutputPath },
+        content: [{ type: "text", text: truncated + text.model.truncatedOutput(fullOutputPath) }],
+        details: { fullOutputPath },
       };
     },
   });

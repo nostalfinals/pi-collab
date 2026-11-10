@@ -7,7 +7,6 @@ import type {
   ExtensionToolContext,
   SessionEntry,
   ToolDefinition,
-  TruncationResult,
 } from "@earendil-works/pi-coding-agent";
 import { CollabMode, type CollaboratorActivity } from "../src/collab-mode.ts";
 import { registerCollabTools } from "../src/tools.ts";
@@ -220,10 +219,8 @@ describe("collab_inspect", () => {
     }
 
     const result = await inspectTool.execute("call", {}, undefined, undefined, {} as ExtensionToolContext);
-    const details = result.details as { truncation?: TruncationResult; fullOutputPath?: string } | undefined;
+    const details = result.details as { fullOutputPath?: string } | undefined;
     const output = result.content[0];
-
-    expect(details?.truncation?.truncated).toBe(true);
 
     if (!details?.fullOutputPath) {
       throw new Error("Expected the full output path");

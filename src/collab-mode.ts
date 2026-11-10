@@ -15,6 +15,7 @@ import {
   type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
 import { text } from "./text.ts";
+import { truncateText } from "./truncation.ts";
 
 export interface CollabConfig {
   provider: string;
@@ -31,11 +32,11 @@ interface CollaboratorAnchor {
   collaboratorEntryId: string;
 }
 
-export interface CollaboratorOutcome {
-  state: "completed" | "error";
-  report?: string;
-  error?: string;
-}
+export type CollaboratorOutcome = {
+  type: "completed" | "error";
+  body?: string;
+  fullOutputPath?: string;
+};
 
 // "generating": part of the response still being streamed. "running": a tool call being executed.
 export type CollaboratorActivityStatus = "generating" | "running" | undefined;
@@ -50,7 +51,7 @@ export interface CollaboratorInspection {
 }
 
 export type CollabWaitResult =
-  | ({ type: "settled" } & CollaboratorOutcome)
+  | { type: "settled"; outcome: CollaboratorOutcome }
   | { type: "reportQueued" }
   | { type: "interruptedByUser" }
   | { type: "aborted" }
@@ -122,7 +123,7 @@ export class CollabMode {
   private lastAssistant: AssistantMessage | undefined;
   private reportDelivery: Delivery<CollabWaitResult> | undefined;
   private pendingCollaboratorSteer = false;
-  private leadContext: ExtensionContext | undefined;
+  private ctx: ExtensionContext | undefined;
   private cachedState: CollabState | undefined;
 
   constructor(
@@ -131,15 +132,15 @@ export class CollabMode {
   ) {}
 
   set extensionContext(ctx: ExtensionContext) {
-    this.leadContext = ctx;
+    this.ctx = ctx;
     this.cachedState = undefined;
   }
 
   private get context(): ExtensionContext {
-    if (!this.leadContext) {
+    if (!this.ctx) {
       throw new Error("Lead context is not available.");
     }
-    return this.leadContext;
+    return this.ctx;
   }
 
   get hasPendingWait(): boolean {
@@ -154,7 +155,7 @@ export class CollabMode {
     }
 
     if (outcome === "error") {
-      this.leadContext?.ui.notify(text.ui.leadStoppedWhileCollaboratorRuns, "warning");
+      this.ctx?.ui.notify(text.ui.leadStoppedWhileCollaboratorRuns, "warning");
       return undefined;
     }
 
@@ -323,7 +324,7 @@ export class CollabMode {
     try {
       session = await this.getOrCreateCollaborator(state.config);
     } catch (error) {
-      this.notifyError(error instanceof Error ? error.message : String(error));
+      this.notifyCollaboratorError(error instanceof Error ? error.message : String(error));
       throw error;
     }
 
@@ -333,8 +334,8 @@ export class CollabMode {
 
     void session.prompt(message, { streamingBehavior: "steer" }).catch((error: unknown) => {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.notifyError(errorMessage);
-      this.deliverOutcome({ state: "error", error: text.model.collaboratorStartFailed(errorMessage) });
+      this.notifyCollaboratorError(errorMessage);
+      this.deliverOutcome({ type: "error", body: text.model.collaboratorStartFailed(errorMessage) });
     });
   }
 
@@ -483,7 +484,7 @@ export class CollabMode {
     this.lastAssistant = undefined;
     this.reportDelivery = undefined;
     this.pendingCollaboratorSteer = false;
-    this.leadContext = undefined;
+    this.ctx = undefined;
     this.cachedState = undefined;
 
     if (delivery) {
@@ -569,7 +570,7 @@ export class CollabMode {
         // AgentSession persists the message after notifying subscribers.
         queueMicrotask(() => {
           const collaboratorEntryId = session.sessionManager.getLeafId();
-          if (collaboratorEntryId && this.leadContext) {
+          if (collaboratorEntryId && this.ctx) {
             this.pi.appendEntry<CollaboratorAnchor>(anchorType, { collaboratorEntryId });
           }
         });
@@ -590,11 +591,11 @@ export class CollabMode {
         }
         if (last?.stopReason !== "stop") {
           if (last?.errorMessage) {
-            this.notifyError(last.errorMessage);
+            this.notifyCollaboratorError(last.errorMessage);
           }
           this.deliverOutcome({
-            state: "error",
-            error: text.model.collaboratorStoppedWithError(last?.stopReason, last?.errorMessage),
+            type: "error",
+            body: text.model.collaboratorStoppedWithError(last?.stopReason, last?.errorMessage),
           });
           return;
         }
@@ -603,15 +604,19 @@ export class CollabMode {
           .map((part) => part.text)
           .join("\n")
           .trim();
-        this.deliverOutcome({ state: "completed", report: report || undefined });
+        this.deliverOutcome({ type: "completed", body: report || undefined });
       }
     });
 
     return session;
   }
 
-  private notifyError(error: string): void {
-    this.leadContext?.ui.notify(text.ui.collaboratorError(error), "error");
+  private notifyCollaboratorError(error: string) {
+    this.ctx?.ui.notify(text.ui.collaboratorError(error), "error");
+  }
+
+  private notifyError(error: string) {
+    this.ctx?.ui.notify(text.ui.error(error), "error");
   }
 
   private findModel(config: CollabConfig): Model<Api> {
@@ -628,16 +633,33 @@ export class CollabMode {
     }
   }
 
-  private deliverOutcome(outcome: CollaboratorOutcome): void {
+  private async deliverOutcome(outcome: CollaboratorOutcome) {
     const delivery = this.reportDelivery;
+    let truncatedBody;
+    let outcomeAfterTruncation = outcome;
+
+    try {
+      truncatedBody = outcome.body !== undefined ? await truncateText(outcome.body) : undefined;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.notifyError(errorMessage)
+    }
+
+    if (truncatedBody !== undefined) {
+      outcomeAfterTruncation = {
+        ...outcome,
+        body: truncatedBody.truncated,
+        fullOutputPath: truncatedBody.fullOutputPath,
+      };
+    }
 
     if (delivery) {
       this.reportDelivery = undefined;
-      delivery.deliver({ type: "settled", ...outcome });
+      delivery.deliver({ type: "settled", outcome: outcomeAfterTruncation });
       return;
     }
 
-    const ctx = this.leadContext;
+    const ctx = this.ctx;
 
     if (!ctx) {
       return;
@@ -645,7 +667,7 @@ export class CollabMode {
 
     const message = {
       customType: reportMessageType,
-      content: text.model.collaboratorOutcome(outcome),
+      content: text.model.collaboratorOutcome(outcomeAfterTruncation),
       display: true,
     };
 

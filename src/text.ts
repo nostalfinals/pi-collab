@@ -9,6 +9,7 @@ export const text = {
     modeDisabled: "Collaborator mode disabled.",
     disableWhileRunning: "The collaborator is still running. Wait for it to finish before disabling collab mode.",
     configurationUpdated: "Collaborator configuration updated.",
+    error: (error: string) => `Error: ${error}`,
     collaboratorError: (error: string) => `Collaborator error: ${error}`,
     configurationFailed: (error: string) => `Failed to apply collaborator configuration: ${error}`,
     leadStoppedWhileCollaboratorRuns:
@@ -86,12 +87,11 @@ export const text = {
       });
       return [`status: ${inspection.status}`, ...(entries.length > 0 ? entries : ["No activity yet."])].join("\n\n");
     },
-    collaboratorOutcome: (outcome: CollaboratorOutcome, fullOutputPath?: string) => {
-      const body = outcome.error ?? outcome.report;
-      const truncated = fullOutputPath ? `\n\n[Report truncated. Full report: ${fullOutputPath}]` : "";
-      return body
-        ? `<collaborator_report state="${outcome.state}">\n${body}\n</collaborator_report>${truncated}`
-        : `<collaborator_report state="${outcome.state}" />`;
+    collaboratorOutcome: (outcome: CollaboratorOutcome) => {
+      const truncated = outcome.fullOutputPath ? `\n\n[Report truncated. Full report: ${outcome.fullOutputPath}]` : "";
+      return outcome.body
+        ? `<collaborator_report state="${outcome.type}">\n${outcome.body}\n</collaborator_report>${truncated}`
+        : `<collaborator_report state="${outcome.type}" />`;
     },
     collabInactive: "Collab mode is not active. Ask the user to enable it with /collab before using collab tools.",
     noCollaborator: "No collaborator session exists yet. Use collab_send to give it an assignment first.",
