@@ -1,5 +1,5 @@
 import type { StopReason } from "@earendil-works/pi-ai";
-import type { CollaboratorInspection, CollaboratorOutcome } from "./collab-mode.ts";
+import type { CollaboratorInspection, CollaboratorOutcome } from "./types.ts";
 
 export const text = {
   ui: {

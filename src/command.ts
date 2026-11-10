@@ -6,8 +6,9 @@ import {
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { CollabConfig, CollabMode } from "./collab-mode.ts";
+import type { CollabMode } from "./collab-mode.ts";
 import { text } from "./text.ts";
+import type { CollabConfig } from "./types.ts";
 import { ModelSelector } from "./tui/model-selector.ts";
 import { SelectionPanel } from "./tui/selection-panel.ts";
 

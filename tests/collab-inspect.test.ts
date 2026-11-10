@@ -8,7 +8,8 @@ import type {
   SessionEntry,
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { CollabMode, type CollaboratorActivity } from "../src/collab-mode.ts";
+import { CollabMode } from "../src/collab-mode.ts";
+import type { CollaboratorActivity } from "../src/types.ts";
 import { registerCollabTools } from "../src/tools.ts";
 
 type FakeSession = {

@@ -1,8 +1,9 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import type { CollabMode, CollaboratorOutcome } from "./collab-mode.ts";
+import type { CollabMode } from "./collab-mode.ts";
+import type { CollaboratorOutcome } from "./types.ts";
 import { text } from "./text.ts";
-import { truncateText } from "./truncation.ts";
+import { truncateText } from "./utils/truncation.ts";
 
 const defaultWaitTimeout = 300;
 const maxWaitTimeout = 1200;

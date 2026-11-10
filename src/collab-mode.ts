@@ -1,62 +1,24 @@
-import { copyFile, mkdir, readdir, readFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
-import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
-import {
-  createAgentSession,
-  DefaultResourceLoader,
-  getAgentDir,
-  SessionManager,
-  type AgentActivityOutcome,
-  type AgentSession,
-  type CustomMessageEntry,
-  type CustomMessageEntryDraft,
-  type ExtensionAPI,
-  type ExtensionContext,
-  type SessionEntry,
+import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
+import type {
+  AgentActivityOutcome,
+  AgentSession,
+  CustomMessageEntry,
+  CustomMessageEntryDraft,
+  ExtensionAPI,
+  ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { copyCollaboratorFile, createCollaboratorSession } from "./utils/session.ts";
 import { text } from "./text.ts";
-import { truncateText } from "./truncation.ts";
-
-export type CollabConfig = {
-  provider: string;
-  modelId: string;
-  thinkingLevel: ModelThinkingLevel;
-};
-
-type CollabState = {
-  mode: "active" | "paused";
-  config: CollabConfig;
-};
-
-type CollaboratorAnchor = {
-  collaboratorEntryId: string;
-};
-
-export type CollaboratorOutcome = {
-  type: "completed" | "error";
-  body?: string;
-  fullOutputPath?: string;
-};
-
-// "generating": part of the response still being streamed. "running": a tool call being executed.
-export type CollaboratorActivityStatus = "generating" | "running" | undefined;
-
-export type CollaboratorActivity =
-  | { type: "text"; text: string; status: CollaboratorActivityStatus }
-  | { type: "toolCall"; name: string; arguments: string; truncated: boolean; status: CollaboratorActivityStatus };
-
-export type CollaboratorInspection = {
-  status: "running" | "idle";
-  activities: CollaboratorActivity[];
-};
-
-export type CollabWaitResult =
-  | { type: "settled"; outcome: CollaboratorOutcome }
-  | { type: "reportQueued" }
-  | { type: "interruptedByUser" }
-  | { type: "aborted" }
-  | { type: "collaboratorInterrupted" }
-  | { type: "timeout" };
+import { truncateText } from "./utils/truncation.ts";
+import type {
+  CollabConfig,
+  CollaboratorActivity,
+  CollaboratorAnchor,
+  CollaboratorInspection,
+  CollaboratorOutcome,
+  CollabState,
+  CollabWaitResult,
+} from "./types.ts";
 
 type Delivery<T> = {
   promise: Promise<T>;
@@ -81,52 +43,14 @@ const nudgeMessageType = "pi-collab/nudge";
 const collabToolNames = ["collab_send", "collab_wait", "collab_inspect", "collab_interrupt"];
 const maxToolArgumentsLength = 500;
 
-async function findCollaboratorFile(sessionDir: string, leadSessionId: string): Promise<string | undefined> {
-  const collabDir = join(sessionDir, "collab");
-  let names: string[];
-
-  try {
-    names = await readdir(collabDir);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return undefined;
-    }
-    throw error;
-  }
-
-  const name = names.find((name) => name === `${leadSessionId}.jsonl` || name.endsWith(`_${leadSessionId}.jsonl`));
-  return name ? join(collabDir, name) : undefined;
-}
-
-function findCollaboratorLeaf(entries: SessionEntry[], anchorId: string): string | null {
-  const anchorIndex = entries.findIndex((entry) => entry.id === anchorId);
-  if (anchorIndex === -1) {
-    return null;
-  }
-
-  const nextUserIndex = entries.findIndex(
-    (entry, index) => index > anchorIndex && entry.type === "message" && entry.message.role === "user",
-  );
-  if (nextUserIndex === -1) {
-    return entries.at(-1)?.id ?? null;
-  }
-
-  for (let i = nextUserIndex - 1; i > anchorIndex; i--) {
-    const entry = entries[i];
-    if (entry?.type === "message" && entry.message.role === "assistant") {
-      return entry.id;
-    }
-  }
-  return entries[nextUserIndex - 1]?.id ?? entries[anchorIndex]?.id ?? null;
-}
-
 export class CollabMode {
-  private collaboratorSession: Promise<AgentSession> | undefined;
-  private lastAssistant: AssistantMessage | undefined;
-  private reportDelivery: Delivery<CollabWaitResult> | undefined;
-  private pendingCollaboratorSteer = false;
   private ctx: ExtensionContext | undefined;
   private cachedState: CollabState | undefined;
+
+  private collaboratorSession: Promise<AgentSession> | undefined;
+  private lastAssistant: AssistantMessage | undefined;
+  private waitingDelivery: Delivery<CollabWaitResult> | undefined;
+  private pendingCollaboratorSteer = false;
 
   constructor(
     private pi: ExtensionAPI,
@@ -146,7 +70,7 @@ export class CollabMode {
   }
 
   get hasPendingWait(): boolean {
-    return this.reportDelivery !== undefined;
+    return this.waitingDelivery !== undefined;
   }
 
   async beforeLeadSettle(outcome: AgentActivityOutcome): Promise<CustomMessageEntryDraft | undefined> {
@@ -280,21 +204,8 @@ export class CollabMode {
   }
 
   async copyCollaboratorForFork(previousSessionFile: string): Promise<void> {
-    const previousManager = SessionManager.open(previousSessionFile);
-    const previousId = previousManager.getSessionId();
-    const source = await findCollaboratorFile(dirname(previousSessionFile), previousId);
-
-    if (!source) {
-      return;
-    }
-
-    const ctx = this.context;
-    const targetDir = join(ctx.sessionManager.getSessionDir(), "collab");
-    const sourceSuffix = `${previousId}.jsonl`;
-    const targetName = `${basename(source).slice(0, -sourceSuffix.length)}${ctx.sessionManager.getSessionId()}.jsonl`;
-
-    await mkdir(targetDir, { recursive: true });
-    await copyFile(source, join(targetDir, targetName));
+    const { sessionManager } = this.context;
+    await copyCollaboratorFile(previousSessionFile, sessionManager.getSessionDir(), sessionManager.getSessionId());
   }
 
   // Tear down the old branch's collaborator and invalidate branch-local state.
@@ -360,12 +271,12 @@ export class CollabMode {
       throw new Error(text.model.collaboratorNotRunning);
     }
 
-    if (this.reportDelivery) {
+    if (this.waitingDelivery) {
       throw new Error(text.model.waitAlreadyPending);
     }
 
     const delivery = createPendingDelivery<CollabWaitResult>();
-    this.reportDelivery = delivery;
+    this.waitingDelivery = delivery;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     try {
@@ -376,8 +287,8 @@ export class CollabMode {
         }),
       ]);
     } finally {
-      if (this.reportDelivery === delivery) {
-        this.reportDelivery = undefined;
+      if (this.waitingDelivery === delivery) {
+        this.waitingDelivery = undefined;
       }
       clearTimeout(timer);
     }
@@ -428,7 +339,7 @@ export class CollabMode {
   // Input fires before steering is queued. Wait for the queue so the interrupted
   // tool result and the user's message reach the next model request together.
   async interruptWaitAfterInput(): Promise<void> {
-    const delivery = this.reportDelivery;
+    const delivery = this.waitingDelivery;
 
     if (!delivery) {
       return;
@@ -439,12 +350,12 @@ export class CollabMode {
         setTimeout(resolve, attempt === 0 ? 0 : 10);
       });
 
-      if (this.reportDelivery !== delivery) {
+      if (this.waitingDelivery !== delivery) {
         return;
       }
 
       if (this.context.hasPendingMessages()) {
-        this.reportDelivery = undefined;
+        this.waitingDelivery = undefined;
         delivery.deliver({ type: "interruptedByUser" });
         return;
       }
@@ -468,9 +379,9 @@ export class CollabMode {
 
   async abortCollaborator(): Promise<void> {
     this.lastAssistant = undefined;
-    const delivery = this.reportDelivery;
+    const delivery = this.waitingDelivery;
     if (delivery) {
-      this.reportDelivery = undefined;
+      this.waitingDelivery = undefined;
       delivery.deliver({ type: "aborted" });
     }
 
@@ -480,11 +391,11 @@ export class CollabMode {
 
   async dispose(): Promise<void> {
     const session = this.collaboratorSession;
-    const delivery = this.reportDelivery;
+    const delivery = this.waitingDelivery;
 
     this.collaboratorSession = undefined;
     this.lastAssistant = undefined;
-    this.reportDelivery = undefined;
+    this.waitingDelivery = undefined;
     this.pendingCollaboratorSteer = false;
     this.ctx = undefined;
     this.cachedState = undefined;
@@ -513,58 +424,18 @@ export class CollabMode {
 
   private async createCollaborator(config: CollabConfig): Promise<AgentSession> {
     const ctx = this.context;
-    const model = this.findModel(config);
-    const agentDir = getAgentDir();
-    const role = (await readFile(join(dirname(this.extensionPath), "../prompts/collaborator_role.md"), "utf8")).trim();
-    const resourceLoader = new DefaultResourceLoader({
-      cwd: ctx.cwd,
-      agentDir,
-      extensionsOverride: (base) => ({
-        ...base,
-        extensions: base.extensions.filter((extension) => extension.resolvedPath !== this.extensionPath),
-      }),
-      extensionFactories: [
-        {
-          name: "collab-role",
-          factory: (collaboratorPi) => {
-            collaboratorPi.on("before_agent_start", (event) => {
-              event.systemPromptOptions.sections.collaborator_role = role;
-            });
-          },
-        },
-      ],
-    });
-
-    await resourceLoader.reload();
-
-    const sessionDir = ctx.sessionManager.getSessionDir();
-    const sessionFile = await findCollaboratorFile(sessionDir, ctx.sessionManager.getSessionId());
-    const sessionManager = sessionFile
-      ? SessionManager.open(sessionFile)
-      : SessionManager.create(ctx.cwd, join(sessionDir, "collab"), {
-          id: ctx.sessionManager.getSessionId(),
-        });
     const anchor = [...ctx.sessionManager.getBranch()]
       .reverse()
       .find((entry) => entry.type === "custom" && entry.customType === anchorEntryType);
     const anchorData = anchor?.type === "custom" ? (anchor.data as CollaboratorAnchor | undefined) : undefined;
-    const leafId = anchorData
-      ? findCollaboratorLeaf(sessionManager.getEntries(), anchorData.collaboratorEntryId)
-      : null;
-    if (leafId) {
-      sessionManager.branch(leafId);
-    } else {
-      sessionManager.resetLeaf();
-    }
 
-    const { session } = await createAgentSession({
-      cwd: ctx.cwd,
-      agentDir,
-      model,
+    const session = await createCollaboratorSession({
+      ctx,
+      extensionPath: this.extensionPath,
+      model: this.findModel(config),
       thinkingLevel: config.thinkingLevel,
       tools: this.pi.getActiveTools().filter((name) => !collabToolNames.includes(name)),
-      resourceLoader,
-      sessionManager,
+      anchorEntryId: anchorData?.collaboratorEntryId,
     });
 
     session.subscribe((event) => {
@@ -584,9 +455,9 @@ export class CollabMode {
         if (event.aborted) {
           // Aborted runs have no report. Only a wait that started while the abort was
           // in progress is still pending here; Lead-side aborts end their wait earlier.
-          const delivery = this.reportDelivery;
+          const delivery = this.waitingDelivery;
           if (delivery) {
-            this.reportDelivery = undefined;
+            this.waitingDelivery = undefined;
             delivery.deliver({ type: "collaboratorInterrupted" });
           }
           return;
@@ -636,7 +507,7 @@ export class CollabMode {
   }
 
   private async deliverOutcome(outcome: CollaboratorOutcome) {
-    const delivery = this.reportDelivery;
+    const delivery = this.waitingDelivery;
     let truncatedBody;
     let outcomeAfterTruncation = outcome;
 
@@ -644,7 +515,7 @@ export class CollabMode {
       truncatedBody = outcome.body !== undefined ? await truncateText(outcome.body) : undefined;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.notifyError(errorMessage)
+      this.notifyError(errorMessage);
     }
 
     if (truncatedBody !== undefined) {
@@ -656,7 +527,7 @@ export class CollabMode {
     }
 
     if (delivery) {
-      this.reportDelivery = undefined;
+      this.waitingDelivery = undefined;
       delivery.deliver({ type: "settled", outcome: outcomeAfterTruncation });
       return;
     }

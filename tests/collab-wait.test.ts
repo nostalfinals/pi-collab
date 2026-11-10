@@ -1,7 +1,7 @@
 import { readFile, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { expect, it } from "vitest";
-import { truncateText } from "../src/truncation.ts";
+import { truncateText } from "../src/utils/truncation.ts";
 
 it("truncates reports over 50 KB and saves the full report", async () => {
   const report = "a".repeat(60 * 1024);
