@@ -25,7 +25,7 @@ type Delivery<T> = {
   deliver: (value: T) => void;
 };
 
-function createPendingDelivery<T>(): Delivery<T> {
+function createWaitingDelivery<T>(): Delivery<T> {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
     resolve = done;
@@ -275,7 +275,7 @@ export class CollabMode {
       throw new Error(text.model.waitAlreadyPending);
     }
 
-    const delivery = createPendingDelivery<CollabWaitResult>();
+    const delivery = createWaitingDelivery<CollabWaitResult>();
     this.waitingDelivery = delivery;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
