@@ -331,6 +331,10 @@ export class CollabMode {
           });
         }
       }
+      // Pi records a failed or aborted response's error on the message itself.
+      if (message.errorMessage) {
+        activities.push({ type: "error", message: message.errorMessage });
+      }
     }
 
     return { status: session.isIdle ? "idle" : "running", activities: activities.slice(-count) };

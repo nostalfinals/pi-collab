@@ -83,6 +83,9 @@ export const text = {
     truncatedOutput: (fullOutputPath: string) => `\n\n[Output truncated. Full output: ${fullOutputPath}]`,
     collaboratorActivity: (inspection: CollaboratorInspection): string => {
       const entries = inspection.activities.map((activity) => {
+        if (activity.type === "error") {
+          return `[error]\n${activity.message}`;
+        }
         const truncated = activity.type === "toolCall" && activity.truncated;
         const flags = [activity.status, truncated && "truncated"].filter(Boolean);
         const suffix = flags.length > 0 ? ` (${flags.join(", ")})` : "";

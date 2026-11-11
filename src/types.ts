@@ -26,7 +26,8 @@ export type CollaboratorActivityStatus = "generating" | "running" | undefined;
 
 export type CollaboratorActivity =
   | { type: "text"; text: string; status: CollaboratorActivityStatus }
-  | { type: "toolCall"; name: string; arguments: string; truncated: boolean; status: CollaboratorActivityStatus };
+  | { type: "toolCall"; name: string; arguments: string; truncated: boolean; status: CollaboratorActivityStatus }
+  | { type: "error"; message: string };
 
 export type CollaboratorInspection = {
   status: "running" | "idle";

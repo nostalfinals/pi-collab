@@ -144,7 +144,11 @@ describe("inspectCollaborator", () => {
       }),
     );
 
-    expect(activities.map((activity) => activity.status)).toEqual([undefined, "generating", "generating"]);
+    expect(activities.map((activity) => (activity.type === "error" ? undefined : activity.status))).toEqual([
+      undefined,
+      "generating",
+      "generating",
+    ]);
   });
 
   it("marks executing tool calls as running", async () => {
@@ -155,7 +159,10 @@ describe("inspectCollaborator", () => {
       }),
     );
 
-    expect(activities.map((activity) => activity.status)).toEqual(["running", undefined]);
+    expect(activities.map((activity) => (activity.type === "error" ? undefined : activity.status))).toEqual([
+      "running",
+      undefined,
+    ]);
   });
 
   it("reports the collaborator as idle or running", async () => {
