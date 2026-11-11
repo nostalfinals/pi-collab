@@ -22,7 +22,6 @@ export class SelectionPanel extends Container {
   ) {
     super();
     this.addChild(new DynamicBorder((text) => theme.fg("accent", text)));
-    this.addChild(new Spacer(1));
     this.addChild(new Text(theme.fg("accent", title), 1, 0));
     this.addChild(new Spacer(1));
     this.addChild(this.listContainer);
