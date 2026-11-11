@@ -11,6 +11,11 @@ export const text = {
     configurationUpdated: "Collaborator configuration updated.",
     error: (error: string) => `Error: ${error}`,
     collaboratorError: (error: string) => `Collaborator error: ${error}`,
+    collaboratorExtensionError: (extensionPath: string, error: string, stack: string | undefined) => {
+      // The first stack line repeats the error message.
+      const stackLines = (stack?.split("\n").slice(1) ?? []).map((line) => `\n  ${line.trim()}`);
+      return `Collaborator extension "${extensionPath}" error: ${error}${stackLines.join("")}`;
+    },
     configurationFailed: (error: string) => `Failed to apply collaborator configuration: ${error}`,
     leadStoppedWhileCollaboratorRuns:
       "The lead stopped because of an error, but the collaborator is still running. Its report will be sent to the lead when it finishes, or you can stop the collaborator in /collab.",

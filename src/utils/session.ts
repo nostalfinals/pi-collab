@@ -10,6 +10,7 @@ import {
   type ExtensionContext,
   type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
+import { text } from "../text.ts";
 
 async function findCollaboratorFile(sessionDir: string, leadSessionId: string): Promise<string | undefined> {
   const collabDir = join(sessionDir, "collab");
@@ -129,6 +130,12 @@ export async function createCollaboratorSession(options: CollaboratorSessionOpti
     tools: options.tools,
     resourceLoader,
     sessionManager,
+  });
+
+  await session.bindExtensions({
+    onError: (error) => {
+      options.ctx.ui.notify(text.ui.collaboratorExtensionError(error.extensionPath, error.error, error.stack), "error");
+    },
   });
 
   return session;
