@@ -107,15 +107,15 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
     execute: async (_toolCallId, params) => {
       const inspection = await collab.inspectCollaborator(params.count ?? 5);
       const output = text.model.collaboratorActivity(inspection);
-      const truncation = await truncateText(output);
+      const truncation = await truncateText(output, "tail");
 
       if (!truncation) {
         return { content: [{ type: "text", text: output }], details: {} };
       }
 
-      const { truncated, fullOutputPath } = truncation;
+      const { result, fullOutputPath } = truncation;
       return {
-        content: [{ type: "text", text: truncated + text.model.truncatedOutput(fullOutputPath) }],
+        content: [{ type: "text", text: result.content + text.model.truncatedOutput(fullOutputPath) }],
         details: { fullOutputPath },
       };
     },

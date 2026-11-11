@@ -5,13 +5,13 @@ import { truncateText } from "../src/utils/truncation.ts";
 
 it("truncates reports over 50 KB and saves the full report", async () => {
   const report = "a".repeat(60 * 1024);
-  const result = await truncateText(report);
+  const result = await truncateText(report, "head");
 
   if (!result) {
     throw new Error("Expected the report to be truncated");
   }
 
-  expect(result.truncated.length).toBeLessThan(report.length);
+  expect(result.result.content.length).toBeLessThan(report.length);
 
   try {
     expect((await stat(result.fullOutputPath)).isFile()).toBe(true);

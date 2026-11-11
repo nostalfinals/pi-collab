@@ -512,7 +512,7 @@ export class CollabMode {
     let outcomeAfterTruncation = outcome;
 
     try {
-      truncatedBody = outcome.body !== undefined ? await truncateText(outcome.body) : undefined;
+      truncatedBody = outcome.body !== undefined ? await truncateText(outcome.body, "head") : undefined;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.notifyError(errorMessage);
@@ -521,7 +521,7 @@ export class CollabMode {
     if (truncatedBody !== undefined) {
       outcomeAfterTruncation = {
         ...outcome,
-        body: truncatedBody.truncated,
+        body: truncatedBody.result.content,
         fullOutputPath: truncatedBody.fullOutputPath,
       };
     }
