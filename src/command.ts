@@ -22,7 +22,16 @@ export async function collabCommand(collab: CollabMode, ctx: ExtensionCommandCon
   const state = collab.state;
 
   if (state?.mode !== "active") {
-    const config = await selectConfig(ctx, state?.config);
+    let config: CollabConfig | undefined;
+    if (state) {
+      const reuse = await confirmReEnable(ctx);
+      if (reuse === undefined) {
+        return;
+      }
+      config = reuse ? state.config : await selectConfig(ctx, state.config);
+    } else {
+      config = await selectConfig(ctx);
+    }
     if (config && (await applyOrNotify(ctx, () => collab.enable(config)))) {
       ctx.ui.notify(text.ui.configurationSaved, "info");
     }
@@ -110,6 +119,27 @@ async function applyOrNotify(ctx: ExtensionContext, apply: () => Promise<void>):
 
 function getModelSlug(model: Model<Api>): string {
   return `${model.provider}/${model.id}`;
+}
+
+async function confirmReEnable(ctx: ExtensionContext): Promise<boolean | undefined> {
+  const answer = await ctx.ui.custom<string | undefined>(
+    (tui, theme, kb, done) =>
+      new SelectionPanel(
+        text.ui.reEnableTitle,
+        [
+          { value: "yes", label: text.ui.yesOption },
+          { value: "no", label: text.ui.noOption },
+        ],
+        "yes",
+        theme,
+        kb,
+        done,
+        () => done(undefined),
+        () => tui.requestRender(),
+        text.ui.reEnableConfirm,
+      ),
+  );
+  return answer === undefined ? undefined : answer === "yes";
 }
 
 async function confirmStop(ctx: ExtensionContext): Promise<boolean> {

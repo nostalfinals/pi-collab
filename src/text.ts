@@ -25,6 +25,9 @@ export const text = {
       "A cheaper model that is capable enough and follows instructions well is usually a great choice.\nIf you don't see the model you want, open /model to refresh the model catalog.",
     modelSelectorSelected: (name: string) => `Selected: ${name}`,
     collabModeTitle: `Collab Mode`,
+    reEnableTitle: "Re-enable collab mode",
+    reEnableConfirm:
+      "Collab mode was enabled earlier in this session.\nContinue with the existing model and thinking level configuration?",
     thinkingLevelSelectorTitle: "Select a thinking level for the collaborator",
     thinkingLevelSelectorModel: (name: string) => `Model: ${name}`,
     modelOption: "Model",
@@ -33,6 +36,7 @@ export const text = {
     stopCollaboratorConfirm: "This will stop the running collaborator, and its current task may be left unfinished.\nContinue?",
     collaboratorStopped: "Collaborator stopped.",
     yesOption: "Yes",
+    noOption: "No",
     backOption: "Back",
     disableOption: "Disable",
     navigationKeyLabel: "↑↓",
