@@ -29,26 +29,23 @@ async function findCollaboratorFile(sessionDir: string, leadSessionId: string): 
   return name ? join(collabDir, name) : undefined;
 }
 
-function findCollaboratorLeaf(entries: SessionEntry[], anchorId: string): string | null {
+export function findCollaboratorLeaf(entries: SessionEntry[], anchorId: string): string | null {
   const anchorIndex = entries.findIndex((entry) => entry.id === anchorId);
+
   if (anchorIndex === -1) {
     return null;
   }
 
-  const nextUserIndex = entries.findIndex(
-    (entry, index) => index > anchorIndex && entry.type === "message" && entry.message.role === "user",
-  );
-  if (nextUserIndex === -1) {
-    return entries.at(-1)?.id ?? null;
-  }
+  let leafId = anchorId;
 
-  for (let i = nextUserIndex - 1; i > anchorIndex; i--) {
-    const entry = entries[i];
-    if (entry?.type === "message" && entry.message.role === "assistant") {
-      return entry.id;
+  for (const entry of entries.slice(anchorIndex + 1)) {
+    const isUserMessage = entry.type === "message" && entry.message.role === "user";
+    if (entry.parentId === leafId && !isUserMessage) {
+      leafId = entry.id;
     }
   }
-  return entries[nextUserIndex - 1]?.id ?? entries[anchorIndex]?.id ?? null;
+
+  return leafId;
 }
 
 export async function copyCollaboratorFile(
