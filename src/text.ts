@@ -3,12 +3,11 @@ import type { CollaboratorInspection, CollaboratorOutcome } from "./types.ts";
 
 export const text = {
   ui: {
-    collabCommandDescription: "Enable/disable or change the model for collab model",
+    collabCommandDescription: "Let a collaborator agent work alongside the main agent",
     terminalRequired: "/collab requires the terminal interface.",
     configurationSaved: "Collaborator configuration saved.",
-    modeDisabled: "Collaborator mode disabled.",
+    modeDisabled: "Collab mode disabled.",
     disableWhileRunning: "The collaborator is still running. Wait for it to finish before disabling collab mode.",
-    configurationUpdated: "Collaborator configuration updated.",
     error: (error: string) => `Error: ${error}`,
     collaboratorError: (error: string) => `Collaborator error: ${error}`,
     collaboratorExtensionError: (extensionPath: string, error: string, stack: string | undefined) => {
@@ -18,13 +17,24 @@ export const text = {
     },
     configurationFailed: (error: string) => `Failed to apply collaborator configuration: ${error}`,
     leadStoppedWhileCollaboratorRuns:
-      "The lead stopped because of an error, but the collaborator is still running. Its report will be sent to the lead when it finishes, or you can stop the collaborator in /collab.",
+      "The lead agent stopped unexpectedly while the collaborator is still running. Its report will be sent to the lead when it finishes, or you can stop the collaborator in /collab.",
+    modelNotFound: (model: string) => `Model not found: ${model}`,
     noModelsAvailable: "No models available. Configure a provider with /login first.",
-    modelSelectorTitle: "Which model do you want to use for the collaborator?",
-    overviewTitle: (model: string, effort: string) => `Collaborator · ${model} · ${effort}`,
-    thinkingLevelSelectorTitle: (model: string) => `Choose the thinking level of ${model}`,
+    modelSelectorTitle: "Select a model for the collaborator",
+    modelSelectorAdvice:
+      "A cheaper model that is capable enough and follows instructions well is usually a great choice.\nIf you don't see the model you want, open /model to refresh the model catalog.",
+    modelSelectorSelected: (name: string) => `Selected: ${name}`,
+    collabModeTitle: `Collab Mode`,
+    thinkingLevelSelectorTitle: "Select a thinking level for the collaborator",
+    thinkingLevelSelectorModel: (name: string) => `Model: ${name}`,
+    modelOption: "Model",
+    thinkingLevelOption: "Thinking level",
+    stopCollaborator: "Stop collaborator",
+    stopCollaboratorConfirm: "This will stop the running collaborator, and its current task may be left unfinished.\nContinue?",
+    collaboratorStopped: "Collaborator stopped.",
+    yesOption: "Yes",
+    backOption: "Back",
     disableOption: "Disable",
-    changeConfigurationOption: "Change model or effort",
     navigationKeyLabel: "↑↓",
     navigationActionLabel: "navigate",
     selectKeyLabel: "enter",
@@ -62,7 +72,7 @@ export const text = {
       "The collaborator finished before the wait started; its report is already queued for delivery.",
     readInterruptedByUserResult: "Waiting was interrupted by a user message.",
     readAbortedResult: "Waiting was aborted.",
-    readCollaboratorInterruptedResult: "The collaborator was interrupted, so there is no report.",
+    readCollaboratorInterruptedResult: "The collaborator was interrupted by you or the user, so there is no report.",
     readIncompleteResult: (error: string | undefined) =>
       `The collaborator stopped before finishing its task, so there is no report. Use collab_inspect to see how far it got.${error ? `\n\nError: ${error}` : ""}`,
     collaboratorStartFailed: (error: string) =>

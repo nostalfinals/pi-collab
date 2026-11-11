@@ -397,6 +397,11 @@ export class CollabMode {
     }
   }
 
+  async isCollaboratorRunning(): Promise<boolean> {
+    const session = await this.collaboratorSession?.catch(() => undefined);
+    return session !== undefined && !session.isIdle;
+  }
+
   async interruptCollaborator(): Promise<void> {
     if (this.state?.mode !== "active") {
       throw new Error(text.model.collabInactive);

@@ -18,12 +18,17 @@ export class SelectionPanel extends Container {
     private onSelect: (value: string) => void,
     private onCancel: () => void,
     protected requestRender: () => void,
+    subtitle?: string,
     private showPosition = false,
   ) {
     super();
     this.addChild(new DynamicBorder((text) => theme.fg("accent", text)));
     this.addChild(new Text(theme.fg("accent", title), 1, 0));
     this.addChild(new Spacer(1));
+    if (subtitle) {
+      this.addChild(new Text(theme.fg("muted", subtitle), 1, 0));
+      this.addChild(new Spacer(1));
+    }
     this.addChild(this.listContainer);
     this.setItems(items, selected);
     this.addChild(new Spacer(1));

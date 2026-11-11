@@ -3,6 +3,7 @@ import type { Theme } from "@earendil-works/pi-coding-agent";
 import {
   Input,
   Spacer,
+  Text,
   fuzzyFilter,
   type Focusable,
   type KeybindingsManager,
@@ -19,7 +20,7 @@ function modelItems(models: Model<Api>[], theme: Theme): SelectItem[] {
 }
 
 export class ModelSelector extends SelectionPanel implements Focusable {
-  private input = new Input();
+  private input = new Input({ prompt: "❯ " });
 
   get focused(): boolean {
     return this.input.focused;
@@ -47,9 +48,29 @@ export class ModelSelector extends SelectionPanel implements Focusable {
       onSelect,
       onCancel,
       requestRender,
+      text.ui.modelSelectorAdvice,
       true,
     );
+    this.decorateList();
+  }
+
+  // Wrap the list with the search input above and the selected model's name below.
+  private decorateList(): void {
+    const selectedName = new Text("", 2, 0);
+    const updatePosition = this.list.onSelectionChange;
+    const updateName = () => {
+      const value = this.list.getSelectedItem()?.value;
+      const model = this.models.find((model) => `${model.provider}/${model.id}` === value);
+      selectedName.setText(model ? this.theme.fg("muted", text.ui.modelSelectorSelected(model.name)) : "");
+    };
+    this.list.onSelectionChange = (item) => {
+      updatePosition?.(item);
+      updateName();
+    };
+    updateName();
     this.listContainer.children.unshift(this.input, new Spacer(1));
+    this.listContainer.addChild(new Spacer(1));
+    this.listContainer.addChild(selectedName);
   }
 
   handleInput(data: string): void {
@@ -69,7 +90,7 @@ export class ModelSelector extends SelectionPanel implements Focusable {
       : this.models;
     const selected = this.list.getSelectedItem()?.value;
     this.setItems(modelItems(filtered, this.theme), selected);
-    this.listContainer.children.unshift(this.input, new Spacer(1));
+    this.decorateList();
     this.requestRender();
   }
 }

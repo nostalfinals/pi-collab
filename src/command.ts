@@ -6,6 +6,7 @@ import {
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import type { ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { SelectItem } from "@earendil-works/pi-tui";
 import type { CollabMode } from "./collab-mode.ts";
 import { text } from "./text.ts";
 import type { CollabConfig } from "./types.ts";
@@ -28,16 +29,27 @@ export async function collabCommand(collab: CollabMode, ctx: ExtensionCommandCon
     return;
   }
 
+  let action: string | undefined;
+
   while (true) {
-    const action = await ctx.ui.custom<string | undefined>(
+    const config = collab.state!.config;
+    const configSlug = `${config.provider}/${config.modelId}`;
+    const items: SelectItem[] = [
+      { value: "model", label: text.ui.modelOption, description: configSlug },
+      { value: "thinkingLevel", label: text.ui.thinkingLevelOption, description: config.thinkingLevel },
+    ];
+    if (await collab.isCollaboratorRunning()) {
+      items.push({ value: "stop", label: text.ui.stopCollaborator });
+    }
+    items.push({ value: "disable", label: text.ui.disableOption });
+
+    const selected = action;
+    action = await ctx.ui.custom<string | undefined>(
       (tui, theme, kb, done) =>
         new SelectionPanel(
-          text.ui.overviewTitle(`${state.config.provider}/${state.config.modelId}`, state.config.thinkingLevel),
-          [
-            { value: "disable", label: text.ui.disableOption },
-            { value: "change", label: text.ui.changeConfigurationOption },
-          ],
-          undefined,
+          text.ui.collabModeTitle,
+          items,
+          selected,
           theme,
           kb,
           done,
@@ -46,25 +58,41 @@ export async function collabCommand(collab: CollabMode, ctx: ExtensionCommandCon
         ),
     );
 
-    if (action === "disable") {
+    if (action === "model") {
+      const model = await selectModel(ctx, configSlug);
+      if (model) {
+        const thinkingLevel = clampThinkingLevel(model, config.thinkingLevel);
+        await applyOrNotify(ctx, () =>
+          collab.updateConfig({ provider: model.provider, modelId: model.id, thinkingLevel }),
+        );
+      }
+    } else if (action === "thinkingLevel") {
+      const model = ctx.modelRegistry.find(config.provider, config.modelId);
+      if (!model) {
+        ctx.ui.notify(text.ui.modelNotFound(configSlug), "error");
+        continue;
+      }
+      const thinkingLevel = await selectThinkingLevel(ctx, model, config.thinkingLevel);
+      if (thinkingLevel) {
+        await applyOrNotify(ctx, () => collab.updateConfig({ ...config, thinkingLevel }));
+      }
+    } else if (action === "stop") {
+      if (await confirmStop(ctx)) {
+        try {
+          await collab.interruptCollaborator();
+          ctx.ui.notify(text.ui.collaboratorStopped, "info");
+        } catch (error) {
+          ctx.ui.notify(text.ui.error(error instanceof Error ? error.message : String(error)), "error");
+        }
+      }
+    } else if (action === "disable") {
       if (await collab.disable()) {
         ctx.ui.notify(text.ui.modeDisabled, "info");
       } else {
         ctx.ui.notify(text.ui.disableWhileRunning, "warning");
       }
       return;
-    }
-
-    if (action !== "change") {
-      return;
-    }
-
-    const config = await selectConfig(ctx, state.config);
-
-    if (config) {
-      if (await applyOrNotify(ctx, () => collab.updateConfig(config))) {
-        ctx.ui.notify(text.ui.configurationUpdated, "info");
-      }
+    } else {
       return;
     }
   }
@@ -80,12 +108,32 @@ async function applyOrNotify(ctx: ExtensionContext, apply: () => Promise<void>):
   }
 }
 
-function getModelSlug(model: Model<any>): string {
+function getModelSlug(model: Model<Api>): string {
   return `${model.provider}/${model.id}`;
 }
 
-async function selectConfig(ctx: ExtensionContext, current?: CollabConfig): Promise<CollabConfig | undefined> {
-  await ctx.modelRegistry.refresh();
+async function confirmStop(ctx: ExtensionContext): Promise<boolean> {
+  const answer = await ctx.ui.custom<string | undefined>(
+    (tui, theme, kb, done) =>
+      new SelectionPanel(
+        text.ui.stopCollaborator,
+        [
+          { value: "yes", label: text.ui.yesOption },
+          { value: "back", label: text.ui.backOption },
+        ],
+        "back",
+        theme,
+        kb,
+        done,
+        () => done(undefined),
+        () => tui.requestRender(),
+        text.ui.stopCollaboratorConfirm,
+      ),
+  );
+  return answer === "yes";
+}
+
+async function selectModel(ctx: ExtensionContext, selected: string | undefined): Promise<Model<Api> | undefined> {
   const models = ctx.modelRegistry.getAvailable().sort((a, b) => getModelSlug(a).localeCompare(getModelSlug(b)));
 
   if (models.length === 0) {
@@ -93,11 +141,9 @@ async function selectConfig(ctx: ExtensionContext, current?: CollabConfig): Prom
     return undefined;
   }
 
-  let selected = current ? `${current.provider}/${current.modelId}` : ctx.model && getModelSlug(ctx.model);
-
-  while (true) {
-    const key = await ctx.ui.custom<string | undefined>((tui, theme, kb, done) => {
-      return new ModelSelector(
+  const key = await ctx.ui.custom<string | undefined>(
+    (tui, theme, kb, done) =>
+      new ModelSelector(
         models,
         selected,
         theme,
@@ -105,31 +151,50 @@ async function selectConfig(ctx: ExtensionContext, current?: CollabConfig): Prom
         done,
         () => done(undefined),
         () => tui.requestRender(),
-      );
-    });
+      ),
+  );
+  return models.find((model) => getModelSlug(model) === key);
+}
 
-    if (key === undefined) {
-      return undefined;
-    }
-
-    selected = key;
-
-    const model = models.find((item) => getModelSlug(item) === key)!;
-    const level = clampThinkingLevel(model, current?.thinkingLevel ?? ctx.thinkingLevel ?? "medium");
-    const thinkingLevel = await ctx.ui.custom<ModelThinkingLevel | undefined>((tui, theme, kb, done) => {
-      return new SelectionPanel(
-        text.ui.thinkingLevelSelectorTitle(key),
+async function selectThinkingLevel(
+  ctx: ExtensionContext,
+  model: Model<Api>,
+  current: ModelThinkingLevel,
+): Promise<ModelThinkingLevel | undefined> {
+  return ctx.ui.custom<ModelThinkingLevel | undefined>(
+    (tui, theme, kb, done) =>
+      new SelectionPanel(
+        text.ui.thinkingLevelSelectorTitle,
         getSupportedThinkingLevels(model).map((value) => ({ value, label: value })),
-        level,
+        clampThinkingLevel(model, current),
         theme,
         kb,
         (value) => done(value as ModelThinkingLevel),
         () => done(undefined),
         () => tui.requestRender(),
-      );
-    });
+        text.ui.thinkingLevelSelectorModel(model.name),
+      ),
+  );
+}
 
-    if (thinkingLevel !== undefined) {
+// First-time setup: pick a model, then its thinking level. Backing out of the
+// thinking level returns to the model list.
+async function selectConfig(ctx: ExtensionContext, current?: CollabConfig): Promise<CollabConfig | undefined> {
+  let selected = current && `${current.provider}/${current.modelId}`;
+
+  while (true) {
+    const model = await selectModel(ctx, selected);
+    if (!model) {
+      return undefined;
+    }
+    selected = getModelSlug(model);
+
+    const thinkingLevel = await selectThinkingLevel(
+      ctx,
+      model,
+      current?.thinkingLevel ?? ctx.thinkingLevel ?? "medium",
+    );
+    if (thinkingLevel) {
       return { provider: model.provider, modelId: model.id, thinkingLevel };
     }
   }
