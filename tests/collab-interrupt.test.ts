@@ -11,6 +11,8 @@ class FakeSession {
   aborted = false;
   private listener: (event: AgentSessionEvent) => void = () => {};
 
+  async bindExtensions(): Promise<void> {}
+
   subscribe(listener: (event: AgentSessionEvent) => void): void {
     this.listener = listener;
   }
