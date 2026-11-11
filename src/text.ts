@@ -32,7 +32,7 @@ export const text = {
     backKeyLabel: "esc",
     backActionLabel: "back",
     collabSendToolLabel: "Collab send",
-    collabWaitToolLabel: "Collab wait",
+    collabReadToolLabel: "Collab read",
     collabInspectToolLabel: "Collab inspect",
     collabInterruptToolLabel: "Collab interrupt",
   },
@@ -42,27 +42,29 @@ export const text = {
       "Tools whose names start with `collab_` belong to collab mode. Only use them after the user has enabled collab mode. You will receive a notification when collab mode is enabled.",
     collabEnabled: "Collab mode is now enabled. Read the `collab-mode` skill for the collaboration guidelines.",
     collaboratorStillRunning:
-      "The collaborator is still running, so do not end your turn yet. Call `collab_wait` to wait for its report, or `collab_interrupt` if it is stuck.",
+      "The collaborator is still running, so do not end your turn yet. Call `collab_read` to wait for its report, or `collab_interrupt` if it is stuck.",
     collabDisabled:
       "Collab mode is now disabled. You can still perform read-only operations, such as inspecting the collaborator's output, but you cannot send it messages until the user enables collab mode again.",
   },
   model: {
     sendDescription:
       "Send a message to the collaborator. If the collaborator is idle, the message starts a new run. If it is running, the message is added to the current run. Returns immediately; the collaborator works in parallel until the run ends. The collaborator does not see your conversation with the user, but it keeps its own context across runs.",
-    waitDescription:
-      "Wait up to `timeout` seconds (default 300, at most 1200) for the collaborator's run to end and return its report. If the wait times out, the collaborator keeps running. If the run already ended, its report arrives as a message instead. A user message interrupts the wait.",
+    readDescription:
+      "Read the collaborator's report. If the collaborator is running, wait up to `timeout` seconds (default 300, at most 1200) for its run to end and return its report; if the wait times out, the collaborator keeps running. If it is not running, return the report of its last run right away, or say that the run stopped before finishing. A user message interrupts the wait. Works while collab mode is disabled.",
     inspectDescription:
       "Show whether the collaborator is running and its most recent activity: its text messages and tool calls, oldest first. `count` sets how many to return (default 5). Thinking and tool results are not included, and long tool arguments are cut short. Works whether the collaborator is running or idle, and while collab mode is disabled.",
     interruptDescription:
       "Stop the collaborator's current run, for example when it is stuck on a command that does not return. Queued messages to the collaborator are dropped. The collaborator keeps its context, and the interrupted run produces no report. Use collab_send to start a new run.",
     sendResult: "Message sent.",
     interruptResult: "The collaborator was interrupted.",
-    waitTimeoutResult: (timeout: number) => `The collaborator did not finish within ${timeout} seconds.`,
-    waitReportQueuedResult:
+    readTimeoutResult: (timeout: number) => `The collaborator did not finish within ${timeout} seconds.`,
+    readReportQueuedResult:
       "The collaborator finished before the wait started; its report is already queued for delivery.",
-    waitInterruptedByUserResult: "Waiting was interrupted by a user message.",
-    waitAbortedResult: "Waiting was aborted.",
-    waitCollaboratorInterruptedResult: "The collaborator was interrupted, so there is no report.",
+    readInterruptedByUserResult: "Waiting was interrupted by a user message.",
+    readAbortedResult: "Waiting was aborted.",
+    readCollaboratorInterruptedResult: "The collaborator was interrupted, so there is no report.",
+    readIncompleteResult: (error: string | undefined) =>
+      `The collaborator stopped before finishing its task, so there is no report. Use collab_inspect to see how far it got.${error ? `\n\nError: ${error}` : ""}`,
     collaboratorStartFailed: (error: string) =>
       `The collaborator could not start its run. This is usually a setup problem such as a missing model or missing authentication; ask the user to check the collaborator configuration.\n\nError: ${error}`,
     collaboratorStoppedWithError: (stopReason: StopReason | undefined, error?: string): string => {
@@ -104,6 +106,6 @@ export const text = {
     collabInactive: "Collab mode is not active. Ask the user to enable it with /collab before using collab tools.",
     noCollaborator: "No collaborator session exists yet. Use collab_send to give it an assignment first.",
     collaboratorNotRunning: "The collaborator is not running.",
-    waitAlreadyPending: "A collab_wait call is already in progress. Only one wait can be active at a time.",
+    readAlreadyPending: "A collab_read call is already waiting. Only one wait can be active at a time.",
   },
 };

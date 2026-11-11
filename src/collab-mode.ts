@@ -17,7 +17,7 @@ import type {
   CollaboratorInspection,
   CollaboratorOutcome,
   CollabState,
-  CollabWaitResult,
+  CollabReadResult,
 } from "./types.ts";
 
 type Delivery<T> = {
@@ -33,6 +33,15 @@ function createWaitingDelivery<T>(): Delivery<T> {
   return { promise, deliver: resolve };
 }
 
+function extractReportText(message: AssistantMessage): string | undefined {
+  const report = message.content
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
+  return report || undefined;
+}
+
 const stateEntryType = "pi-collab/state";
 const anchorEntryType = "pi-collab/anchor";
 
@@ -40,7 +49,7 @@ const reportMessageType = "pi-collab/report";
 const statusMessageType = "pi-collab/status";
 const nudgeMessageType = "pi-collab/nudge";
 
-const collabToolNames = ["collab_send", "collab_wait", "collab_inspect", "collab_interrupt"];
+const collabToolNames = ["collab_send", "collab_read", "collab_inspect", "collab_interrupt"];
 const maxToolArgumentsLength = 500;
 
 export class CollabMode {
@@ -49,7 +58,7 @@ export class CollabMode {
 
   private collaboratorSession: Promise<AgentSession> | undefined;
   private lastAssistant: AssistantMessage | undefined;
-  private waitingDelivery: Delivery<CollabWaitResult> | undefined;
+  private waitingDelivery: Delivery<CollabReadResult> | undefined;
   private pendingCollaboratorSteer = false;
 
   constructor(
@@ -252,37 +261,47 @@ export class CollabMode {
     });
   }
 
-  async waitForCollaborator(timeout: number): Promise<CollabWaitResult> {
-    if (this.state?.mode !== "active") {
+  private get hasAnchor(): boolean {
+    return this.context.sessionManager
+      .getBranch()
+      .some((entry) => entry.type === "custom" && entry.customType === anchorEntryType);
+  }
+
+  // Waits for a running collaborator's report. When it is not running, reads the result of its last run,
+  // which also works while collab mode is paused.
+  async readCollaborator(timeout: number): Promise<CollabReadResult> {
+    const state = this.state;
+
+    if (!state) {
       throw new Error(text.model.collabInactive);
     }
 
-    if (!this.collaboratorSession) {
+    if (!this.collaboratorSession && !this.hasAnchor) {
       throw new Error(text.model.noCollaborator);
     }
 
-    const session = await this.collaboratorSession;
+    const session = await this.getOrCreateCollaborator(state.config);
 
     if (this.pendingCollaboratorSteer) {
       return { type: "reportQueued" };
     }
 
     if (session.isIdle) {
-      throw new Error(text.model.collaboratorNotRunning);
+      return this.readLastRun(session);
     }
 
     if (this.waitingDelivery) {
-      throw new Error(text.model.waitAlreadyPending);
+      throw new Error(text.model.readAlreadyPending);
     }
 
-    const delivery = createWaitingDelivery<CollabWaitResult>();
+    const delivery = createWaitingDelivery<CollabReadResult>();
     this.waitingDelivery = delivery;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     try {
       return await Promise.race([
         delivery.promise,
-        new Promise<CollabWaitResult>((resolve) => {
+        new Promise<CollabReadResult>((resolve) => {
           timer = setTimeout(() => resolve({ type: "timeout" }), timeout * 1000);
         }),
       ]);
@@ -294,17 +313,29 @@ export class CollabMode {
     }
   }
 
+  private async readLastRun(session: AgentSession): Promise<CollabReadResult> {
+    const last = [...session.messages]
+      .reverse()
+      .find((message) => message.role === "assistant" || message.role === "user" || message.role === "toolResult");
+
+    if (last?.role !== "assistant" || last.stopReason !== "stop") {
+      return { type: "incomplete", error: last?.role === "assistant" ? last.errorMessage : undefined };
+    }
+
+    return {
+      type: "settled",
+      outcome: await this.truncateOutcome({ type: "completed", body: extractReportText(last) }),
+    };
+  }
+
   async inspectCollaborator(count: number): Promise<CollaboratorInspection> {
     const state = this.state;
-    const hasAnchor = this.context.sessionManager
-      .getBranch()
-      .some((entry) => entry.type === "custom" && entry.customType === anchorEntryType);
 
     if (!state) {
       throw new Error(text.model.collabInactive);
     }
 
-    if (!this.collaboratorSession && !hasAnchor) {
+    if (!this.collaboratorSession && !this.hasAnchor) {
       throw new Error(text.model.noCollaborator);
     }
 
@@ -476,12 +507,7 @@ export class CollabMode {
           });
           return;
         }
-        const report = last.content
-          .filter((part) => part.type === "text")
-          .map((part) => part.text)
-          .join("\n")
-          .trim();
-        this.deliverOutcome({ type: "completed", body: report || undefined });
+        this.deliverOutcome({ type: "completed", body: extractReportText(last) });
       }
     });
 
@@ -510,10 +536,8 @@ export class CollabMode {
     }
   }
 
-  private async deliverOutcome(outcome: CollaboratorOutcome) {
-    const delivery = this.waitingDelivery;
+  private async truncateOutcome(outcome: CollaboratorOutcome): Promise<CollaboratorOutcome> {
     let truncatedBody;
-    let outcomeAfterTruncation = outcome;
 
     try {
       truncatedBody = outcome.body !== undefined ? await truncateText(outcome.body, "head") : undefined;
@@ -522,13 +546,20 @@ export class CollabMode {
       this.notifyError(errorMessage);
     }
 
-    if (truncatedBody !== undefined) {
-      outcomeAfterTruncation = {
-        ...outcome,
-        body: truncatedBody.result.content,
-        fullOutputPath: truncatedBody.fullOutputPath,
-      };
+    if (truncatedBody === undefined) {
+      return outcome;
     }
+
+    return {
+      ...outcome,
+      body: truncatedBody.result.content,
+      fullOutputPath: truncatedBody.fullOutputPath,
+    };
+  }
+
+  private async deliverOutcome(outcome: CollaboratorOutcome) {
+    const outcomeAfterTruncation = await this.truncateOutcome(outcome);
+    const delivery = this.waitingDelivery;
 
     if (delivery) {
       this.waitingDelivery = undefined;

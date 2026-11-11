@@ -11,6 +11,7 @@ import type {
 import { CollabMode } from "../src/collab-mode.ts";
 import type { CollaboratorActivity } from "../src/types.ts";
 import { registerCollabTools } from "../src/tools.ts";
+import { anchorEntry, stateEntry } from "./helpers.ts";
 
 type FakeSession = {
   isIdle: boolean;
@@ -25,26 +26,6 @@ type CollabInternals = {
   collaboratorSession: Promise<FakeSession> | undefined;
   getOrCreateCollaborator: () => Promise<FakeSession>;
 };
-
-function stateEntry(mode: "active" | "paused"): SessionEntry {
-  return {
-    type: "custom",
-    id: "state",
-    parentId: null,
-    timestamp: "2026-01-01T00:00:00.000Z",
-    customType: "pi-collab/state",
-    data: { mode, config: { provider: "p", modelId: "m", thinkingLevel: "off" } },
-  } as SessionEntry;
-}
-
-const anchorEntry = {
-  type: "custom",
-  id: "anchor",
-  parentId: null,
-  timestamp: "2026-01-01T00:00:00.000Z",
-  customType: "pi-collab/anchor",
-  data: { collaboratorEntryId: "entry" },
-} as SessionEntry;
 
 function assistant(...content: unknown[]): unknown {
   return { role: "assistant", content };

@@ -5,18 +5,18 @@ import type { CollaboratorOutcome } from "./types.ts";
 import { text } from "./text.ts";
 import { truncateText } from "./utils/truncation.ts";
 
-const defaultWaitTimeout = 300;
-const maxWaitTimeout = 1200;
+const defaultReadTimeout = 300;
+const maxReadTimeout = 1200;
 
-const waitParameters = Type.Object({
-  timeout: Type.Optional(Type.Number({ minimum: 0, maximum: maxWaitTimeout })),
+const readParameters = Type.Object({
+  timeout: Type.Optional(Type.Number({ minimum: 0, maximum: maxReadTimeout })),
 });
 
 const inspectParameters = Type.Object({
   count: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 
-type WaitDetails = { outcome?: CollaboratorOutcome };
+type ReadDetails = { outcome?: CollaboratorOutcome };
 type InspectResult = { fullOutputPath?: string };
 
 export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void {
@@ -36,47 +36,54 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
     },
   });
 
-  pi.registerTool<typeof waitParameters, WaitDetails>({
-    name: "collab_wait",
-    label: text.ui.collabWaitToolLabel,
-    description: text.model.waitDescription,
-    parameters: waitParameters,
+  pi.registerTool<typeof readParameters, ReadDetails>({
+    name: "collab_read",
+    label: text.ui.collabReadToolLabel,
+    description: text.model.readDescription,
+    parameters: readParameters,
 
     execute: async (_toolCallId, params) => {
-      const timeout = params.timeout ?? defaultWaitTimeout;
-      const result = await collab.waitForCollaborator(timeout);
+      const timeout = params.timeout ?? defaultReadTimeout;
+      const result = await collab.readCollaborator(timeout);
       switch (result.type) {
         case "timeout":
           return {
-            content: [{ type: "text", text: text.model.waitTimeoutResult(timeout) }],
+            content: [{ type: "text", text: text.model.readTimeoutResult(timeout) }],
             details: {},
             isError: true,
           };
 
         case "reportQueued":
           return {
-            content: [{ type: "text", text: text.model.waitReportQueuedResult }],
+            content: [{ type: "text", text: text.model.readReportQueuedResult }],
             details: {},
             isError: false,
           };
 
         case "interruptedByUser":
           return {
-            content: [{ type: "text", text: text.model.waitInterruptedByUserResult }],
+            content: [{ type: "text", text: text.model.readInterruptedByUserResult }],
             details: {},
             isError: true,
           };
 
         case "aborted":
           return {
-            content: [{ type: "text", text: text.model.waitAbortedResult }],
+            content: [{ type: "text", text: text.model.readAbortedResult }],
             details: {},
             isError: true,
           };
 
         case "collaboratorInterrupted":
           return {
-            content: [{ type: "text", text: text.model.waitCollaboratorInterruptedResult }],
+            content: [{ type: "text", text: text.model.readCollaboratorInterruptedResult }],
+            details: {},
+            isError: true,
+          };
+
+        case "incomplete":
+          return {
+            content: [{ type: "text", text: text.model.readIncompleteResult(result.error) }],
             details: {},
             isError: true,
           };

@@ -21,7 +21,6 @@ export type CollaboratorOutcome = {
   fullOutputPath?: string;
 };
 
-// "generating": part of the response still being streamed. "running": a tool call being executed.
 export type CollaboratorActivityStatus = "generating" | "running" | undefined;
 
 export type CollaboratorActivity =
@@ -34,8 +33,9 @@ export type CollaboratorInspection = {
   activities: CollaboratorActivity[];
 };
 
-export type CollabWaitResult =
+export type CollabReadResult =
   | { type: "settled"; outcome: CollaboratorOutcome }
+  | { type: "incomplete"; error?: string }
   | { type: "reportQueued" }
   | { type: "interruptedByUser" }
   | { type: "aborted" }

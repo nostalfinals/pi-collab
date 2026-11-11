@@ -42,11 +42,11 @@ Follow one handoff, one review, then the next handoff.
 
 ## Waiting for results
 
-Once you have nothing left to do and the collaborator is still running, call `collab_wait`. Do not end your turn before the collaborator stops.
+Once you have nothing left to do and the collaborator is still running, call `collab_read`. Do not end your turn before the collaborator stops.
 
 Set a timeout that fits the size and complexity of the task. Keep it short enough that you get control back soon after the collaborator goes wrong or gets stuck in a loop.
 
-When a wait times out, use `collab_inspect` to see how far the collaborator has got. If it is likely to stay stuck for a long time, for example on a bash command that probably will not return in reasonable time and has no suitable timeout, stop it with `collab_interrupt`. If it is heading the right way, call `collab_wait` again. If it is going off track, send it a correction with `collab_send`.
+When a wait times out, use `collab_inspect` to see how far the collaborator has got. If it is likely to stay stuck for a long time, for example on a bash command that probably will not return in reasonable time and has no suitable timeout, stop it with `collab_interrupt`. If it is heading the right way, call `collab_read` again. If it is going off track, send it a correction with `collab_send`.
 
 When the collaborator is blocked, for example when it stops in its report to ask you something, or `collab_inspect` shows it cannot make progress, give it direction and let it continue. Take over only when the work needs something only you can do, such as asking the user, or when the collaborator has tried your direction and it still did not work.
 
