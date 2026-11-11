@@ -34,6 +34,8 @@ A handoff is a task the collaborator can complete and verify on its own. Send it
 - **Goal and completion criteria**: a clear, reachable goal and what counts as "done". The collaborator decides how to write the code, but do not pass the user's words along as they are. Break an open-ended request into smaller tasks that each have clear completion criteria.
 - **Report format**: what the report should include, and in what form.
 
+The collaborator knows its role and yours from its own prompt, so do not introduce them again. Start with the task.
+
 After sending a handoff, continue with any remaining work you can do in parallel. Do not edit the same files as the collaborator, or make changes that affect what its task relies on. If you really need to, or part of its task no longer holds, tell it with a short `collab_send`. If the collaborator is running, the message is added to its current run.
 
 Follow one handoff, one review, then the next handoff.
