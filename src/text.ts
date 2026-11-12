@@ -62,7 +62,7 @@ export const text = {
   },
   model: {
     sendDescription:
-      "Send a message to the collaborator. If the collaborator is idle, the message starts a new run. If it is running, the message is added to the current run. Returns immediately; the collaborator works in parallel until the run ends. The collaborator does not see your conversation with the user, but it keeps its own context across runs.",
+      "Send a message to the collaborator. If the collaborator is idle, the message starts a new run. If it is running, the message is added to the current run. Returns once the run has started or the message has been added; the collaborator works in parallel until the run ends. The collaborator does not see your conversation with the user, but it keeps its own context across runs.",
     readDescription:
       "Read the collaborator's report. If the collaborator is running, wait up to `timeout` seconds (default 300, at most 1200) for its run to end and return its report; if the wait times out, the collaborator keeps running. If it is not running, return the report of its last run right away, or say that the run stopped before finishing. A user message interrupts the wait. Works while collab mode is disabled.",
     inspectDescription:

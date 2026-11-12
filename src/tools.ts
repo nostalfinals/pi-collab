@@ -27,6 +27,9 @@ export function registerCollabTools(pi: ExtensionAPI, collab: CollabMode): void 
     parameters: Type.Object({
       message: Type.String(),
     }),
+    // Sibling tool calls wait until the message is delivered, so a collab_read in the same batch
+    // does not read the previous run.
+    executionMode: "sequential",
     execute: async (_toolCallId, params) => {
       await collab.sendToCollaborator(params.message);
       return {
