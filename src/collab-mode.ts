@@ -254,10 +254,32 @@ export class CollabMode {
       this.lastAssistant = undefined;
     }
 
-    void session.prompt(message, { streamingBehavior: "steer" }).catch((error: unknown) => {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.notifyCollaboratorError(errorMessage);
-      this.deliverOutcome({ type: "error", body: text.model.collaboratorStartFailed(errorMessage) });
+    // TODO: handle compacting
+
+    await new Promise<void>((resolve, reject) => {
+      let started = false;
+
+      void session
+        .prompt(message, {
+          streamingBehavior: "steer",
+          preflightResult: () => {
+            started = true;
+            resolve();
+          },
+        })
+        .catch((error: unknown) => {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+
+          if (!started) {
+            this.notifyCollaboratorError(errorMessage);
+            reject(new Error(text.model.collaboratorStartFailed(errorMessage)));
+            return;
+          }
+
+          // Only reached if Pi throws after treating the prompt as started.
+          // Usually caused by a Pi bug or another extension's event handler.
+          this.notifyCollaboratorError(errorMessage);
+        });
     });
   }
 
