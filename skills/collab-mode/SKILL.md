@@ -23,7 +23,7 @@ Keep these yourself:
 - **Investigations that need judgment**: for example, tracing a root cause, reproducing or investigating a complex bug, or reading code in depth. If you will present the conclusions to the user as your own well-founded answer, do the work yourself. Broad, wide-net searches can go to the collaborator.
 - **Work that looks right even when it is wrong**: including data analysis, metrics, and evaluation scripts. However small, write and check these yourself. Only after you have fully written out the procedure can you hand off its mechanical execution.
 - **Complex rendering work where you need to look at the output**: for example, debugging a web page in a browser. Building and checking the rendered result form a single loop. Splitting it between two agents makes it easy to deliver something that renders wrong.
-- **Very small tasks**: a change you can make and confirm in one or two turns, with nothing to test afterwards. Once a task involves writing or running tests, changing multiple files, or checking the result again after the change, it is no longer small, and you should send it as a handoff.
+- **Tasks cheaper to do than to hand off**: once the decisions are made, compare the work that is left with the cost of writing the handoff and reviewing the result. Do it yourself if the handoff would be about as long as the change itself, or if reviewing it means reading the whole change line by line anyway. The number of files touched does not matter.
 
 ## Handoffs
 
