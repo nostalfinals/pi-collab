@@ -9,6 +9,7 @@ import type {
   ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { CollabMode } from "../src/collab-mode.ts";
+import { defaultCollaboratorConfig } from "../src/config.ts";
 import type { CollaboratorActivity } from "../src/types.ts";
 import { registerCollabTools } from "../src/tools.ts";
 import { anchorEntry, stateEntry } from "./helpers.ts";
@@ -44,7 +45,7 @@ function fakeSession(state: Partial<FakeSession["state"]> = {}, isIdle = false):
 }
 
 function createCollab(branch: SessionEntry[], session?: FakeSession): CollabMode {
-  const collab = new CollabMode({} as ExtensionAPI, "");
+  const collab = new CollabMode({} as ExtensionAPI, "", defaultCollaboratorConfig());
   collab.extensionContext = { sessionManager: { getBranch: () => branch } } as unknown as ExtensionContext;
   if (session) {
     (collab as unknown as CollabInternals).collaboratorSession = Promise.resolve(session);

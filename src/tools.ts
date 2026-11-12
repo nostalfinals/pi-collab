@@ -8,6 +8,8 @@ import { truncateText } from "./utils/truncation.ts";
 const defaultReadTimeout = 300;
 const maxReadTimeout = 1200;
 
+export const collabToolNames = ["collab_send", "collab_read", "collab_inspect", "collab_interrupt"];
+
 const readParameters = Type.Object({
   timeout: Type.Optional(Type.Number({ minimum: 0, maximum: maxReadTimeout })),
 });

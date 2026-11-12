@@ -1,8 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { CollabMode } from "../src/collab-mode.ts";
+import { defaultCollaboratorConfig } from "../src/config.ts";
 import extension from "../src/index.ts";
+
+// The extension entry point loads collab.json from the agent directory.
+const agentDir = mkdtempSync(join(tmpdir(), "pi-collab-test-"));
+process.env.PI_CODING_AGENT_DIR = agentDir;
+afterAll(() => rmSync(agentDir, { recursive: true, force: true }));
 
 const timestamp = "2026-01-01T00:00:00.000Z";
 
@@ -45,7 +54,7 @@ function contextFor(branch: SessionEntry[]): ExtensionContext {
 }
 
 function lostStatusId(branch: SessionEntry[]): string | undefined {
-  const collab = new CollabMode({} as ExtensionAPI, "");
+  const collab = new CollabMode({} as ExtensionAPI, "", defaultCollaboratorConfig());
   collab.extensionContext = contextFor(branch);
   return collab.statusMessageLostInCompaction?.id;
 }

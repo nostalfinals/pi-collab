@@ -10,6 +10,7 @@ import type {
 import { copyCollaboratorFile, createCollaboratorSession } from "./utils/session.ts";
 import { createDelivery, type Delivery } from "./utils/delivery.ts";
 import { text } from "./text.ts";
+import type { CollaboratorConfig } from "./config.ts";
 import { truncateText } from "./utils/truncation.ts";
 import type {
   CollabConfig,
@@ -37,7 +38,6 @@ const reportMessageType = "pi-collab/report";
 const statusMessageType = "pi-collab/status";
 const nudgeMessageType = "pi-collab/nudge";
 
-const collabToolNames = ["collab_send", "collab_read", "collab_inspect", "collab_interrupt"];
 const maxToolArgumentsLength = 500;
 
 export class CollabMode {
@@ -55,6 +55,7 @@ export class CollabMode {
   constructor(
     private pi: ExtensionAPI,
     private extensionPath: string,
+    private config: CollaboratorConfig,
   ) {}
 
   set extensionContext(ctx: ExtensionContext) {
@@ -532,7 +533,8 @@ export class CollabMode {
       extensionPath: this.extensionPath,
       model: this.findModel(config),
       thinkingLevel: config.thinkingLevel,
-      tools: this.pi.getActiveTools().filter((name) => !collabToolNames.includes(name)),
+      config: this.config,
+      leadTools: this.pi.getActiveTools(),
       anchorEntryId: anchorData?.collaboratorEntryId,
     });
 

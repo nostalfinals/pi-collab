@@ -1,5 +1,9 @@
 import type { AgentSessionEvent, ExtensionAPI, ExtensionContext, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { CollabMode } from "../src/collab-mode.ts";
+import { defaultCollaboratorConfig } from "../src/config.ts";
+
+// Keep collaborator creation from reading the developer's real agent config in tests.
+process.env.PI_CODING_AGENT_DIR = "/nonexistent/pi-collab-test";
 
 export function stateEntry(mode: "active" | "paused"): SessionEntry {
   return {
@@ -31,6 +35,16 @@ export class FakeSession {
   private listener: (event: AgentSessionEvent) => void = () => {};
 
   async bindExtensions(): Promise<void> {}
+
+  getAllTools(): Array<{ name: string }> {
+    return [];
+  }
+
+  getActiveToolNames(): string[] {
+    return [];
+  }
+
+  setActiveToolsByName(_names: string[]): void {}
 
   subscribe(listener: (event: AgentSessionEvent) => void): void {
     this.listener = listener;
@@ -84,10 +98,12 @@ export async function createCollab(session: FakeSession, options: CollabOptions 
   const { branch = [stateEntry("active")], loaded = true, leadIdle = true } = options;
   fakeSession = session;
   const pi = { getActiveTools: () => [], sendMessage() {}, appendEntry() {} } as unknown as ExtensionAPI;
-  const collab = new CollabMode(pi, new URL("../src/index.ts", import.meta.url).pathname);
+  const collab = new CollabMode(pi, new URL("../src/index.ts", import.meta.url).pathname, defaultCollaboratorConfig());
   collab.extensionContext = {
     cwd: "/tmp",
     isIdle: () => leadIdle,
+    isProjectTrusted: () => false,
+    ui: { notify() {} },
     modelRegistry: { find: () => ({}) },
     sessionManager: {
       getBranch: () => branch,

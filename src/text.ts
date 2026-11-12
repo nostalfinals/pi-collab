@@ -18,6 +18,17 @@ export const text = {
     configurationFailed: (error: string) => `Failed to apply collaborator configuration: ${error}`,
     leadStoppedWhileCollaboratorRuns:
       "The lead agent stopped unexpectedly while the collaborator is still running. Its report will be sent to the lead when it finishes, or you can stop the collaborator in /collab.",
+    unmatchedSelection: (groups: { extensions: string[]; skills: string[]; tools: string[] }) => {
+      const categories: Array<[string, string[]]> = [
+        ["extensions", groups.extensions],
+        ["skills", groups.skills],
+        ["tools", groups.tools],
+      ];
+      const lines = categories
+        .filter(([, names]) => names.length > 0)
+        .map(([category, names]) => `- ${category}: ${names.join(", ")}`);
+      return `Some entries in collab.json match nothing in the collaborator:\n${lines.join("\n")}`;
+    },
     modelNotFound: (model: string) => `Model not found: ${model}`,
     noModelsAvailable: "No models available. Configure a provider with /login first.",
     modelSelectorTitle: "Select a model for the collaborator",
@@ -50,6 +61,17 @@ export const text = {
     collabReadToolLabel: "Collab read",
     collabInspectToolLabel: "Collab inspect",
     collabInterruptToolLabel: "Collab interrupt",
+  },
+  config: {
+    invalidJson: (path: string, reason: string) => `Invalid collab config at ${path}: not valid JSON: ${reason}`,
+    invalidTopLevel: (path: string) => `Invalid collab config at ${path}: the top level must be an object.`,
+    invalidCollaborator: (path: string) => `Invalid collab config at ${path}: "collaborator" must be an object.`,
+    invalidRule: (path: string, field: string) =>
+      `Invalid collab config at ${path}: "collaborator.${field}" must be a list of names or an object with "include" and "exclude" lists.`,
+    unknownRuleKey: (path: string, field: string, key: string) =>
+      `Invalid collab config at ${path}: "collaborator.${field}" has an unknown key "${key}". Only "include" and "exclude" are allowed.`,
+    invalidNameList: (path: string, field: string) =>
+      `Invalid collab config at ${path}: "collaborator.${field}" must be a list of non-empty strings.`,
   },
   prompt: {
     reminder: (body: string) => `<collab_reminder>\n${body}\n</collab_reminder>`,
