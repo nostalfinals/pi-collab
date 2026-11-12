@@ -71,6 +71,7 @@ export const text = {
     interruptDescription:
       "Stop the collaborator's current run, for example when it is stuck on a command that does not return. Queued messages to the collaborator are dropped. The collaborator keeps its context, and the interrupted run produces no report. Use collab_send to start a new run.",
     sendResult: "Message sent.",
+    sendWasAborted: "Send operation was aborted.",
     interruptResult: "The collaborator was interrupted.",
     readTimeoutResult: (timeout: number) => `The collaborator did not finish within ${timeout} seconds.`,
     readReportQueuedResult:

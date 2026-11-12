@@ -45,9 +45,12 @@ export class CollabMode {
   private cachedState: CollabState | undefined;
 
   private collaboratorSession: Promise<AgentSession> | undefined;
-  private lastAssistant: AssistantMessage | undefined;
-  private waitingDelivery: Delivery<CollabReadResult> | undefined;
-  private pendingCollaboratorSteer = false;
+  private manualCompaction: Delivery<void> | undefined;
+  private abortController = new AbortController();
+
+  private waitingRead: Delivery<CollabReadResult> | undefined;
+  private lastAssistantMessage: AssistantMessage | undefined;
+  private pendingReportSteer = false;
 
   constructor(
     private pi: ExtensionAPI,
@@ -66,8 +69,13 @@ export class CollabMode {
     return this.ctx;
   }
 
+  private abortAndSwapController() {
+    this.abortController.abort();
+    this.abortController = new AbortController();
+  }
+
   get hasPendingWait(): boolean {
-    return this.waitingDelivery !== undefined;
+    return this.waitingRead !== undefined;
   }
 
   async beforeLeadSettle(outcome: AgentActivityOutcome): Promise<CustomMessageEntryDraft | undefined> {
@@ -209,10 +217,11 @@ export class CollabMode {
   // The next creation reopens the file and positions its leaf from the latest Lead anchor.
   async syncBranch(): Promise<void> {
     this.cachedState = undefined;
-    this.pendingCollaboratorSteer = false;
-    const sessionPromise = this.collaboratorSession;
+    this.pendingReportSteer = false;
 
+    const sessionPromise = this.collaboratorSession;
     await this.abortCollaborator();
+
     if (!sessionPromise) {
       return;
     }
@@ -224,6 +233,8 @@ export class CollabMode {
 
   async sendToCollaborator(message: string): Promise<void> {
     const state = this.state;
+    const abortSignal = this.abortController.signal;
+    const abortError = new Error(text.model.sendWasAborted);
 
     if (state?.mode !== "active") {
       throw new Error(text.model.collabInactive);
@@ -238,17 +249,46 @@ export class CollabMode {
       throw error;
     }
 
+    if (abortSignal.aborted) {
+      throw abortError;
+    }
+
     if (!session.isStreaming) {
-      this.lastAssistant = undefined;
+      this.lastAssistantMessage = undefined;
+    }
+
+    if (this.manualCompaction) {
+      await new Promise<void>((resolve, reject) => {
+        if (abortSignal.aborted) {
+          reject(abortError);
+          return;
+        }
+        const onAbort = () => reject(abortError);
+        abortSignal.addEventListener("abort", onAbort, { once: true });
+        this.manualCompaction?.promise.then(() => {
+          abortSignal.removeEventListener("abort", onAbort);
+          resolve();
+        });
+      });
     }
 
     await new Promise<void>((resolve, reject) => {
       let started = false;
 
-      void session
+      session
         .prompt(message, {
           streamingBehavior: "steer",
-          preflightResult: () => {
+          preflightResult: (disposition) => {
+            if (abortSignal.aborted) {
+              if (disposition === "started") {
+                session.abort();
+              } else if (disposition === "queued") {
+                session.clearQueue();
+              }
+              reject(abortError);
+              return;
+            }
+
             started = true;
             resolve();
           },
@@ -290,7 +330,7 @@ export class CollabMode {
 
     const session = await this.getOrCreateCollaborator(state.config);
 
-    if (this.pendingCollaboratorSteer) {
+    if (this.pendingReportSteer) {
       return { type: "reportQueued" };
     }
 
@@ -298,12 +338,12 @@ export class CollabMode {
       return this.readLastRun(session);
     }
 
-    if (this.waitingDelivery) {
+    if (this.waitingRead) {
       throw new Error(text.model.readAlreadyPending);
     }
 
     const delivery = createDelivery<CollabReadResult>();
-    this.waitingDelivery = delivery;
+    this.waitingRead = delivery;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     try {
@@ -314,8 +354,8 @@ export class CollabMode {
         }),
       ]);
     } finally {
-      if (this.waitingDelivery === delivery) {
-        this.waitingDelivery = undefined;
+      if (this.waitingRead === delivery) {
+        this.waitingRead = undefined;
       }
       clearTimeout(timer);
     }
@@ -382,7 +422,7 @@ export class CollabMode {
   // Input fires before steering is queued. Wait for the queue so the interrupted
   // tool result and the user's message reach the next model request together.
   async interruptWaitAfterInput(): Promise<void> {
-    const delivery = this.waitingDelivery;
+    const delivery = this.waitingRead;
 
     if (!delivery) {
       return;
@@ -393,12 +433,12 @@ export class CollabMode {
         setTimeout(resolve, attempt === 0 ? 0 : 10);
       });
 
-      if (this.waitingDelivery !== delivery) {
+      if (this.waitingRead !== delivery) {
         return;
       }
 
       if (this.context.hasPendingMessages()) {
-        this.waitingDelivery = undefined;
+        this.waitingRead = undefined;
         delivery.deliver({ type: "interruptedByUser" });
         return;
       }
@@ -426,31 +466,41 @@ export class CollabMode {
   }
 
   async abortCollaborator(): Promise<void> {
-    this.lastAssistant = undefined;
-    const delivery = this.waitingDelivery;
+    this.abortAndSwapController();
+    this.lastAssistantMessage = undefined;
+    const delivery = this.waitingRead;
+
     if (delivery) {
-      this.waitingDelivery = undefined;
+      this.waitingRead = undefined;
       delivery.deliver({ type: "aborted" });
     }
 
     const session = await this.collaboratorSession;
+
+    session?.clearQueue();
     await session?.abort();
   }
 
   async dispose(): Promise<void> {
     const session = this.collaboratorSession;
-    const delivery = this.waitingDelivery;
+
+    this.abortAndSwapController();
+
+    if (this.manualCompaction) {
+      this.manualCompaction.deliver();
+    }
+
+    if (this.waitingRead) {
+      this.waitingRead.deliver({ type: "aborted" });
+    }
 
     this.collaboratorSession = undefined;
-    this.lastAssistant = undefined;
-    this.waitingDelivery = undefined;
-    this.pendingCollaboratorSteer = false;
+    this.manualCompaction = undefined;
+    this.lastAssistantMessage = undefined;
+    this.waitingRead = undefined;
+    this.pendingReportSteer = false;
     this.ctx = undefined;
     this.cachedState = undefined;
-
-    if (delivery) {
-      delivery.deliver({ type: "aborted" });
-    }
 
     if (session) {
       (await session).dispose();
@@ -496,16 +546,16 @@ export class CollabMode {
           }
         });
       } else if (event.type === "message_end" && event.message.role === "assistant") {
-        this.lastAssistant = event.message;
+        this.lastAssistantMessage = event.message;
       } else if (event.type === "agent_settled") {
-        const last = this.lastAssistant;
-        this.lastAssistant = undefined;
+        const last = this.lastAssistantMessage;
+        this.lastAssistantMessage = undefined;
         if (event.aborted) {
           // Aborted runs have no report. Only a wait that started while the abort was
           // in progress is still pending here; Lead-side aborts end their wait earlier.
-          const delivery = this.waitingDelivery;
+          const delivery = this.waitingRead;
           if (delivery) {
-            this.waitingDelivery = undefined;
+            this.waitingRead = undefined;
             delivery.deliver({ type: "collaboratorInterrupted" });
           }
           return;
@@ -521,6 +571,14 @@ export class CollabMode {
           return;
         }
         this.deliverOutcome({ type: "completed", body: extractReportText(last) });
+      } else if (event.type === "compaction_start" && event.reason === "manual") {
+        this.manualCompaction = createDelivery();
+      } else if (event.type === "compaction_end" && event.reason === "manual") {
+        if (!this.manualCompaction) {
+          return;
+        }
+        this.manualCompaction.deliver();
+        this.manualCompaction = undefined;
       }
     });
 
@@ -545,7 +603,7 @@ export class CollabMode {
 
   handleLeadMessageStart(customType: string): void {
     if (customType === reportMessageType) {
-      this.pendingCollaboratorSteer = false;
+      this.pendingReportSteer = false;
     }
   }
 
@@ -572,10 +630,10 @@ export class CollabMode {
 
   private async deliverOutcome(outcome: CollaboratorOutcome) {
     const outcomeAfterTruncation = await this.truncateOutcome(outcome);
-    const delivery = this.waitingDelivery;
+    const delivery = this.waitingRead;
 
     if (delivery) {
-      this.waitingDelivery = undefined;
+      this.waitingRead = undefined;
       delivery.deliver({ type: "settled", outcome: outcomeAfterTruncation });
       return;
     }
@@ -595,7 +653,7 @@ export class CollabMode {
     if (ctx.isIdle()) {
       this.pi.sendMessage(message, { triggerTurn: true });
     } else {
-      this.pendingCollaboratorSteer = true;
+      this.pendingReportSteer = true;
       this.pi.sendMessage(message, { triggerTurn: true, deliverAs: "steer" });
     }
   }
