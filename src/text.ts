@@ -33,7 +33,8 @@ export const text = {
     modelOption: "Model",
     thinkingLevelOption: "Thinking level",
     stopCollaborator: "Stop collaborator",
-    stopCollaboratorConfirm: "This will stop the running collaborator, and its current task may be left unfinished.\nContinue?",
+    stopCollaboratorConfirm:
+      "This will stop the running collaborator, and its current task may be left unfinished.\nContinue?",
     collaboratorStopped: "Collaborator stopped.",
     yesOption: "Yes",
     noOption: "No",

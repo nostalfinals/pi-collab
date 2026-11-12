@@ -8,6 +8,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { copyCollaboratorFile, createCollaboratorSession } from "./utils/session.ts";
+import { createDelivery, type Delivery } from "./utils/delivery.ts";
 import { text } from "./text.ts";
 import { truncateText } from "./utils/truncation.ts";
 import type {
@@ -19,19 +20,6 @@ import type {
   CollabState,
   CollabReadResult,
 } from "./types.ts";
-
-type Delivery<T> = {
-  promise: Promise<T>;
-  deliver: (value: T) => void;
-};
-
-function createWaitingDelivery<T>(): Delivery<T> {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, deliver: resolve };
-}
 
 function extractReportText(message: AssistantMessage): string | undefined {
   const report = message.content
@@ -254,8 +242,6 @@ export class CollabMode {
       this.lastAssistant = undefined;
     }
 
-    // TODO: handle compacting
-
     await new Promise<void>((resolve, reject) => {
       let started = false;
 
@@ -316,7 +302,7 @@ export class CollabMode {
       throw new Error(text.model.readAlreadyPending);
     }
 
-    const delivery = createWaitingDelivery<CollabReadResult>();
+    const delivery = createDelivery<CollabReadResult>();
     this.waitingDelivery = delivery;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
