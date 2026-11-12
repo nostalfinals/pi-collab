@@ -30,6 +30,8 @@ export const text = {
       return `Some entries in collab.json match nothing in the collaborator:\n${lines.join("\n")}`;
     },
     modelNotFound: (model: string) => `Model not found: ${model}`,
+    autoEnableUnavailable: (model: string) =>
+      `Collab mode was not enabled automatically: model "${model}" is not available or has no authentication configured.`,
     noModelsAvailable: "No models available. Configure a provider with /login first.",
     modelSelectorTitle: "Select a model for the collaborator",
     modelSelectorAdvice:
@@ -72,6 +74,17 @@ export const text = {
       `Invalid collab config at ${path}: "collaborator.${field}" has an unknown key "${key}". Only "include" and "exclude" are allowed.`,
     invalidNameList: (path: string, field: string) =>
       `Invalid collab config at ${path}: "collaborator.${field}" must be a list of non-empty strings.`,
+    invalidDefault: (path: string) =>
+      `Invalid collab config at ${path}: "default" must be an object with "model" and "thinkingLevel".`,
+    unknownDefaultKey: (path: string, key: string) =>
+      `Invalid collab config at ${path}: "default" has an unknown key "${key}". Only "model" and "thinkingLevel" are allowed.`,
+    invalidDefaultModel: (path: string) =>
+      `Invalid collab config at ${path}: "default.model" must be a "provider/modelId" string with both parts non-empty.`,
+    invalidDefaultThinkingLevel: (path: string) =>
+      `Invalid collab config at ${path}: "default.thinkingLevel" must be one of "off", "minimal", "low", "medium", "high", "xhigh", or "max".`,
+    invalidAutoEnable: (path: string) => `Invalid collab config at ${path}: "autoEnable" must be a boolean.`,
+    autoEnableWithoutDefault: (path: string) =>
+      `Invalid collab config at ${path}: "autoEnable" can only be true when "default" is set.`,
   },
   prompt: {
     reminder: (body: string) => `<collab_reminder>\n${body}\n</collab_reminder>`,

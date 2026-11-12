@@ -8,8 +8,8 @@ import { text } from "./text.ts";
 import { registerCollabTools } from "./tools.ts";
 
 export default function (pi: ExtensionAPI) {
-  const config = loadCollabConfig();
-  const collab = new CollabMode(pi, fileURLToPath(import.meta.url), config);
+  const settings = loadCollabConfig();
+  const collab = new CollabMode(pi, fileURLToPath(import.meta.url), settings.collaborator);
 
   registerCollabTools(pi, collab);
 
@@ -19,7 +19,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("collab", {
     description: text.ui.collabCommandDescription,
-    handler: async (_args, ctx) => collabCommand(collab, ctx),
+    handler: async (_args, ctx) => collabCommand(collab, ctx, settings.default),
   });
 
   // Always present and state-neutral, so turning collab mode on or off never changes the system prompt.
@@ -29,6 +29,9 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (event, ctx) => {
     collab.extensionContext = ctx;
+    if (settings.autoEnable && settings.default && (event.reason === "startup" || event.reason === "new")) {
+      await collab.autoEnable(settings.default);
+    }
     if (event.reason === "fork" && event.previousSessionFile) {
       await collab.copyCollaboratorForFork(event.previousSessionFile);
     }

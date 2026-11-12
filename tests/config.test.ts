@@ -42,14 +42,14 @@ describe("loadCollabConfig", () => {
   it("creates collab.json with the default config when the file is missing", async () => {
     const config = loadCollabConfig();
 
-    expect(config).toEqual(defaultConfig.collaborator);
+    expect(config.collaborator).toEqual(defaultConfig.collaborator);
     expect(await readFile(configPath(), "utf8")).toBe(`${JSON.stringify(defaultConfig, null, 2)}\n`);
   });
 
   it("fills in missing rules and fields with the default rule", async () => {
     await writeConfig({ collaborator: { tools: { include: ["read"] } } });
 
-    expect(loadCollabConfig()).toEqual({
+    expect(loadCollabConfig().collaborator).toEqual({
       extensions: { include: [], exclude: [] },
       skills: { include: [], exclude: [] },
       tools: { include: ["read"], exclude: [] },
@@ -57,7 +57,7 @@ describe("loadCollabConfig", () => {
 
     await writeConfig({});
 
-    expect(loadCollabConfig()).toEqual(defaultConfig.collaborator);
+    expect(loadCollabConfig().collaborator).toEqual(defaultConfig.collaborator);
   });
 
   it("reads list rules and object rules", async () => {
@@ -69,7 +69,7 @@ describe("loadCollabConfig", () => {
       },
     });
 
-    expect(loadCollabConfig()).toEqual({
+    expect(loadCollabConfig().collaborator).toEqual({
       extensions: ["a", "b*"],
       skills: { include: [], exclude: ["c"] },
       tools: { include: ["read", "write"], exclude: ["bash"] },
@@ -110,6 +110,70 @@ describe("loadCollabConfig", () => {
 
     await writeConfig({ collaborator: { extensions: { exclude: [""] } } });
     expect(() => loadCollabConfig()).toThrow('"collaborator.extensions.exclude"');
+  });
+
+  it("reads default and autoEnable, splitting the model at the first slash", async () => {
+    await writeConfig({ default: { model: "openrouter/a/b", thinkingLevel: "high" }, autoEnable: true });
+    const settings = loadCollabConfig();
+
+    expect(settings.default).toEqual({ provider: "openrouter", modelId: "a/b", thinkingLevel: "high" });
+    expect(settings.autoEnable).toBe(true);
+  });
+
+  it("leaves default unset and autoEnable off when both are missing", async () => {
+    await writeConfig({});
+    const settings = loadCollabConfig();
+
+    expect(settings.default).toBeUndefined();
+    expect(settings.autoEnable).toBe(false);
+  });
+
+  it("accepts default without autoEnable", async () => {
+    await writeConfig({ default: { model: "p/m", thinkingLevel: "low" } });
+    const settings = loadCollabConfig();
+
+    expect(settings.default).toEqual({ provider: "p", modelId: "m", thinkingLevel: "low" });
+    expect(settings.autoEnable).toBe(false);
+  });
+
+  it("throws when autoEnable is true without default", async () => {
+    await writeConfig({ autoEnable: true });
+
+    expect(() => loadCollabConfig()).toThrow(configPath());
+    expect(() => loadCollabConfig()).toThrow('"autoEnable"');
+  });
+
+  it("throws when autoEnable is not a boolean", async () => {
+    await writeConfig({ autoEnable: "yes" });
+
+    expect(() => loadCollabConfig()).toThrow('"autoEnable"');
+  });
+
+  it("throws when default is not an object", async () => {
+    await writeConfig({ default: [] });
+
+    expect(() => loadCollabConfig()).toThrow('"default"');
+  });
+
+  it("throws when default has a key other than model and thinkingLevel", async () => {
+    await writeConfig({ default: { model: "p/m", thinkingLevel: "low", extra: true } });
+
+    expect(() => loadCollabConfig()).toThrow('unknown key "extra"');
+  });
+
+  it("throws when default.model is missing a provider or a model id", async () => {
+    for (const model of ["pm", "/m", "p/"]) {
+      await writeConfig({ default: { model, thinkingLevel: "low" } });
+      expect(() => loadCollabConfig()).toThrow('"default.model"');
+    }
+  });
+
+  it("throws when default.thinkingLevel is not a known level", async () => {
+    await writeConfig({ default: { model: "p/m" } });
+    expect(() => loadCollabConfig()).toThrow('"default.thinkingLevel"');
+
+    await writeConfig({ default: { model: "p/m", thinkingLevel: "huge" } });
+    expect(() => loadCollabConfig()).toThrow('"default.thinkingLevel"');
   });
 });
 

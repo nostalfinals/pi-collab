@@ -14,13 +14,17 @@ import { ModelSelector } from "./tui/model-selector.ts";
 import { PanelHost } from "./tui/panel-host.ts";
 import { SelectionPanel } from "./tui/selection-panel.ts";
 
-export async function collabCommand(collab: CollabMode, ctx: ExtensionCommandContext): Promise<void> {
+export async function collabCommand(
+  collab: CollabMode,
+  ctx: ExtensionCommandContext,
+  defaultConfig?: CollabConfig,
+): Promise<void> {
   if (ctx.mode !== "tui") {
     ctx.ui.notify(text.ui.terminalRequired, "warning");
     return;
   }
 
-  await withPanels(ctx, (host) => collabFlow(collab, ctx, host));
+  await withPanels(ctx, (host) => collabFlow(collab, ctx, host, defaultConfig));
 }
 
 // Runs the whole command inside one custom component, so moving between panels doesn't flicker.
@@ -35,7 +39,12 @@ async function withPanels(ctx: ExtensionCommandContext, flow: (host: PanelHost) 
   await result;
 }
 
-async function collabFlow(collab: CollabMode, ctx: ExtensionCommandContext, host: PanelHost): Promise<void> {
+async function collabFlow(
+  collab: CollabMode,
+  ctx: ExtensionCommandContext,
+  host: PanelHost,
+  defaultConfig?: CollabConfig,
+): Promise<void> {
   const state = collab.state;
 
   if (state?.mode !== "active") {
@@ -45,9 +54,9 @@ async function collabFlow(collab: CollabMode, ctx: ExtensionCommandContext, host
       if (reuse === undefined) {
         return;
       }
-      config = reuse ? state.config : await selectConfig(ctx, host, state.config);
+      config = reuse ? state.config : await selectConfig(ctx, host, state.config, defaultConfig);
     } else {
-      config = await selectConfig(ctx, host);
+      config = await selectConfig(ctx, host, undefined, defaultConfig);
     }
     if (config && (await applyOrNotify(ctx, () => collab.enable(config)))) {
       ctx.ui.notify(text.ui.configurationSaved, "info");
@@ -211,14 +220,14 @@ async function selectModel(
 async function selectThinkingLevel(
   host: PanelHost,
   model: Model<Api>,
-  current: ModelThinkingLevel,
+  current?: ModelThinkingLevel,
 ): Promise<ModelThinkingLevel | undefined> {
   return host.show<ModelThinkingLevel | undefined>(
     (done) =>
       new SelectionPanel(
         text.ui.thinkingLevelSelectorTitle,
         getSupportedThinkingLevels(model).map((value) => ({ value, label: value })),
-        clampThinkingLevel(model, current),
+        current,
         host.theme,
         host.keybindings,
         (value) => done(value as ModelThinkingLevel),
@@ -235,8 +244,11 @@ async function selectConfig(
   ctx: ExtensionContext,
   host: PanelHost,
   current?: CollabConfig,
+  defaultConfig?: CollabConfig,
 ): Promise<CollabConfig | undefined> {
-  let selected = current && `${current.provider}/${current.modelId}`;
+  const initial = current ?? defaultConfig;
+  let selected = initial && `${initial.provider}/${initial.modelId}`;
+  const initialThinkingLevel = current?.thinkingLevel ?? defaultConfig?.thinkingLevel;
 
   while (true) {
     const model = await selectModel(ctx, host, selected);
@@ -245,11 +257,7 @@ async function selectConfig(
     }
     selected = getModelSlug(model);
 
-    const thinkingLevel = await selectThinkingLevel(
-      host,
-      model,
-      current?.thinkingLevel ?? ctx.thinkingLevel ?? "medium",
-    );
+    const thinkingLevel = await selectThinkingLevel(host, model, initialThinkingLevel);
     if (thinkingLevel) {
       return { provider: model.provider, modelId: model.id, thinkingLevel };
     }

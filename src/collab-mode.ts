@@ -1,4 +1,4 @@
-import type { Api, AssistantMessage, Model } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, type Api, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
 import type {
   AgentActivityOutcome,
   AgentSession,
@@ -127,6 +127,25 @@ export class CollabMode {
     this.pi.appendEntry<CollabState>(stateEntryType, state);
     this.cachedState = state;
     this.sendStatusMessage();
+  }
+
+  async autoEnable(config: CollabConfig): Promise<void> {
+    if (this.state) {
+      return;
+    }
+
+    if (this.context.sessionManager.getBranch().some((entry) => entry.type === "message")) {
+      return;
+    }
+
+    const model = this.context.modelRegistry.find(config.provider, config.modelId);
+
+    if (!model || !this.context.modelRegistry.hasConfiguredAuth(model)) {
+      this.context.ui.notify(text.ui.autoEnableUnavailable(`${config.provider}/${config.modelId}`), "warning");
+      return;
+    }
+
+    await this.enable({ ...config, thinkingLevel: clampThinkingLevel(model, config.thinkingLevel) });
   }
 
   // Pausing requires an idle collaborator. Returns false without changing anything while it runs.

@@ -1,7 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { text } from "./text.ts";
+import type { CollabConfig } from "./types.ts";
 
 export type SelectionRule = string[] | { include: string[]; exclude: string[] };
 
@@ -11,8 +13,24 @@ export type CollaboratorConfig = {
   tools: SelectionRule;
 };
 
+export type CollabSettings = {
+  collaborator: CollaboratorConfig;
+  default?: CollabConfig;
+  autoEnable: boolean;
+};
+
 const ruleFields = ["extensions", "skills", "tools"] as const;
 const ruleObjectKeys = ["include", "exclude"] as const;
+const defaultFields = ["model", "thinkingLevel"] as const;
+const thinkingLevels = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const satisfies readonly ModelThinkingLevel[];
 
 function getCollabConfigPath(): string {
   return join(getAgentDir(), "collab.json");
@@ -26,7 +44,7 @@ export function defaultCollaboratorConfig(): CollaboratorConfig {
   };
 }
 
-export function loadCollabConfig(): CollaboratorConfig {
+export function loadCollabConfig(): CollabSettings {
   const path = getCollabConfigPath();
 
   if (!existsSync(path)) {
@@ -62,7 +80,19 @@ export function loadCollabConfig(): CollaboratorConfig {
     }
   }
 
-  return config;
+  const defaultConfig = parsed.default === undefined ? undefined : parseDefault(parsed.default, path);
+
+  if (parsed.autoEnable !== undefined && typeof parsed.autoEnable !== "boolean") {
+    throw new Error(text.config.invalidAutoEnable(path));
+  }
+
+  const autoEnable = parsed.autoEnable === true;
+
+  if (autoEnable && !defaultConfig) {
+    throw new Error(text.config.autoEnableWithoutDefault(path));
+  }
+
+  return { collaborator: config, default: defaultConfig, autoEnable };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -87,6 +117,42 @@ function parseRule(value: unknown, field: string, path: string): SelectionRule {
   return {
     include: value.include === undefined ? [] : parseNameList(value.include, `${field}.include`, path),
     exclude: value.exclude === undefined ? [] : parseNameList(value.exclude, `${field}.exclude`, path),
+  };
+}
+
+function parseDefault(value: unknown, path: string): CollabConfig {
+  if (!isRecord(value)) {
+    throw new Error(text.config.invalidDefault(path));
+  }
+
+  for (const key of Object.keys(value)) {
+    if (!(defaultFields as readonly string[]).includes(key)) {
+      throw new Error(text.config.unknownDefaultKey(path, key));
+    }
+  }
+
+  const model = value.model;
+
+  if (typeof model !== "string") {
+    throw new Error(text.config.invalidDefaultModel(path));
+  }
+
+  const separator = model.indexOf("/");
+
+  if (separator <= 0 || separator === model.length - 1) {
+    throw new Error(text.config.invalidDefaultModel(path));
+  }
+
+  const thinkingLevel = value.thinkingLevel;
+
+  if (typeof thinkingLevel !== "string" || !(thinkingLevels as readonly string[]).includes(thinkingLevel)) {
+    throw new Error(text.config.invalidDefaultThinkingLevel(path));
+  }
+
+  return {
+    provider: model.slice(0, separator),
+    modelId: model.slice(separator + 1),
+    thinkingLevel: thinkingLevel as ModelThinkingLevel,
   };
 }
 
