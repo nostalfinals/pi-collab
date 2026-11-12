@@ -1,8 +1,7 @@
-# Unfinished stuff before first version
+# Unfinished work before the first version
 
-- [] API for other extensions to enable/disable Collab Mode, lookup collaborator's model/thinking level.
-- [] Resolve flicker between switching command TUI panel.
-- [] Configuration for the user to decide which extension/skill should be loaded for the collaborator.
-- [] Remove orphan collaborator session after the lead session was deleted. Maybe we need a GC system or something.
-- [] Make renderer that looks good for tools.
-- [] Display collaborator's status (running tools, etc.) above the editor.
+- An API for other extensions to enable or disable collab mode and look up the collaborator's model and thinking level.
+- A configuration option that lets the user decide which extensions and skills are loaded for the collaborator.
+- Remove orphaned collaborator sessions after the lead session is deleted. This may need some kind of GC system.
+- Renderers that make tool calls look good.
+- Display the collaborator's status (running tools, etc.) above the editor.

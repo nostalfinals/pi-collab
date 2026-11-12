@@ -11,6 +11,7 @@ import type { CollabMode } from "./collab-mode.ts";
 import { text } from "./text.ts";
 import type { CollabConfig } from "./types.ts";
 import { ModelSelector } from "./tui/model-selector.ts";
+import { PanelHost } from "./tui/panel-host.ts";
 import { SelectionPanel } from "./tui/selection-panel.ts";
 
 export async function collabCommand(collab: CollabMode, ctx: ExtensionCommandContext): Promise<void> {
@@ -19,18 +20,34 @@ export async function collabCommand(collab: CollabMode, ctx: ExtensionCommandCon
     return;
   }
 
+  await withPanels(ctx, (host) => collabFlow(collab, ctx, host));
+}
+
+// Runs the whole command inside one custom component, so moving between panels doesn't flicker.
+async function withPanels(ctx: ExtensionCommandContext, flow: (host: PanelHost) => Promise<void>): Promise<void> {
+  let result: Promise<void> | undefined;
+  await ctx.ui.custom<void>((tui, theme, kb, done) => {
+    const host = new PanelHost(tui, theme, kb);
+    result = flow(host);
+    result.then(done, done);
+    return host;
+  });
+  await result;
+}
+
+async function collabFlow(collab: CollabMode, ctx: ExtensionCommandContext, host: PanelHost): Promise<void> {
   const state = collab.state;
 
   if (state?.mode !== "active") {
     let config: CollabConfig | undefined;
     if (state) {
-      const reuse = await confirmReEnable(ctx);
+      const reuse = await confirmReEnable(host);
       if (reuse === undefined) {
         return;
       }
-      config = reuse ? state.config : await selectConfig(ctx, state.config);
+      config = reuse ? state.config : await selectConfig(ctx, host, state.config);
     } else {
-      config = await selectConfig(ctx);
+      config = await selectConfig(ctx, host);
     }
     if (config && (await applyOrNotify(ctx, () => collab.enable(config)))) {
       ctx.ui.notify(text.ui.configurationSaved, "info");
@@ -53,22 +70,22 @@ export async function collabCommand(collab: CollabMode, ctx: ExtensionCommandCon
     items.push({ value: "disable", label: text.ui.disableOption });
 
     const selected = action;
-    action = await ctx.ui.custom<string | undefined>(
-      (tui, theme, kb, done) =>
+    action = await host.show<string | undefined>(
+      (done) =>
         new SelectionPanel(
           text.ui.collabModeTitle,
           items,
           selected,
-          theme,
-          kb,
+          host.theme,
+          host.keybindings,
           done,
           () => done(undefined),
-          () => tui.requestRender(),
+          host.requestRender,
         ),
     );
 
     if (action === "model") {
-      const model = await selectModel(ctx, configSlug);
+      const model = await selectModel(ctx, host, configSlug);
       if (model) {
         const thinkingLevel = clampThinkingLevel(model, config.thinkingLevel);
         await applyOrNotify(ctx, () =>
@@ -81,18 +98,19 @@ export async function collabCommand(collab: CollabMode, ctx: ExtensionCommandCon
         ctx.ui.notify(text.ui.modelNotFound(configSlug), "error");
         continue;
       }
-      const thinkingLevel = await selectThinkingLevel(ctx, model, config.thinkingLevel);
+      const thinkingLevel = await selectThinkingLevel(host, model, config.thinkingLevel);
       if (thinkingLevel) {
         await applyOrNotify(ctx, () => collab.updateConfig({ ...config, thinkingLevel }));
       }
     } else if (action === "stop") {
-      if (await confirmStop(ctx)) {
+      if (await confirmStop(host)) {
         try {
           await collab.interruptCollaborator();
           ctx.ui.notify(text.ui.collaboratorStopped, "info");
         } catch (error) {
           ctx.ui.notify(text.ui.error(error instanceof Error ? error.message : String(error)), "error");
         }
+        return;
       }
     } else if (action === "disable") {
       if (await collab.disable()) {
@@ -121,9 +139,9 @@ function getModelSlug(model: Model<Api>): string {
   return `${model.provider}/${model.id}`;
 }
 
-async function confirmReEnable(ctx: ExtensionContext): Promise<boolean | undefined> {
-  const answer = await ctx.ui.custom<string | undefined>(
-    (tui, theme, kb, done) =>
+async function confirmReEnable(host: PanelHost): Promise<boolean | undefined> {
+  const answer = await host.show<string | undefined>(
+    (done) =>
       new SelectionPanel(
         text.ui.reEnableTitle,
         [
@@ -131,20 +149,20 @@ async function confirmReEnable(ctx: ExtensionContext): Promise<boolean | undefin
           { value: "no", label: text.ui.noOption },
         ],
         "yes",
-        theme,
-        kb,
+        host.theme,
+        host.keybindings,
         done,
         () => done(undefined),
-        () => tui.requestRender(),
+        host.requestRender,
         text.ui.reEnableConfirm,
       ),
   );
   return answer === undefined ? undefined : answer === "yes";
 }
 
-async function confirmStop(ctx: ExtensionContext): Promise<boolean> {
-  const answer = await ctx.ui.custom<string | undefined>(
-    (tui, theme, kb, done) =>
+async function confirmStop(host: PanelHost): Promise<boolean> {
+  const answer = await host.show<string | undefined>(
+    (done) =>
       new SelectionPanel(
         text.ui.stopCollaborator,
         [
@@ -152,18 +170,22 @@ async function confirmStop(ctx: ExtensionContext): Promise<boolean> {
           { value: "back", label: text.ui.backOption },
         ],
         "back",
-        theme,
-        kb,
+        host.theme,
+        host.keybindings,
         done,
         () => done(undefined),
-        () => tui.requestRender(),
+        host.requestRender,
         text.ui.stopCollaboratorConfirm,
       ),
   );
   return answer === "yes";
 }
 
-async function selectModel(ctx: ExtensionContext, selected: string | undefined): Promise<Model<Api> | undefined> {
+async function selectModel(
+  ctx: ExtensionContext,
+  host: PanelHost,
+  selected: string | undefined,
+): Promise<Model<Api> | undefined> {
   const models = ctx.modelRegistry.getAvailable().sort((a, b) => getModelSlug(a).localeCompare(getModelSlug(b)));
 
   if (models.length === 0) {
@@ -171,37 +193,37 @@ async function selectModel(ctx: ExtensionContext, selected: string | undefined):
     return undefined;
   }
 
-  const key = await ctx.ui.custom<string | undefined>(
-    (tui, theme, kb, done) =>
+  const key = await host.show<string | undefined>(
+    (done) =>
       new ModelSelector(
         models,
         selected,
-        theme,
-        kb,
+        host.theme,
+        host.keybindings,
         done,
         () => done(undefined),
-        () => tui.requestRender(),
+        host.requestRender,
       ),
   );
   return models.find((model) => getModelSlug(model) === key);
 }
 
 async function selectThinkingLevel(
-  ctx: ExtensionContext,
+  host: PanelHost,
   model: Model<Api>,
   current: ModelThinkingLevel,
 ): Promise<ModelThinkingLevel | undefined> {
-  return ctx.ui.custom<ModelThinkingLevel | undefined>(
-    (tui, theme, kb, done) =>
+  return host.show<ModelThinkingLevel | undefined>(
+    (done) =>
       new SelectionPanel(
         text.ui.thinkingLevelSelectorTitle,
         getSupportedThinkingLevels(model).map((value) => ({ value, label: value })),
         clampThinkingLevel(model, current),
-        theme,
-        kb,
+        host.theme,
+        host.keybindings,
         (value) => done(value as ModelThinkingLevel),
         () => done(undefined),
-        () => tui.requestRender(),
+        host.requestRender,
         text.ui.thinkingLevelSelectorModel(model.name),
       ),
   );
@@ -209,18 +231,22 @@ async function selectThinkingLevel(
 
 // First-time setup: pick a model, then its thinking level. Backing out of the
 // thinking level returns to the model list.
-async function selectConfig(ctx: ExtensionContext, current?: CollabConfig): Promise<CollabConfig | undefined> {
+async function selectConfig(
+  ctx: ExtensionContext,
+  host: PanelHost,
+  current?: CollabConfig,
+): Promise<CollabConfig | undefined> {
   let selected = current && `${current.provider}/${current.modelId}`;
 
   while (true) {
-    const model = await selectModel(ctx, selected);
+    const model = await selectModel(ctx, host, selected);
     if (!model) {
       return undefined;
     }
     selected = getModelSlug(model);
 
     const thinkingLevel = await selectThinkingLevel(
-      ctx,
+      host,
       model,
       current?.thinkingLevel ?? ctx.thinkingLevel ?? "medium",
     );
